@@ -41,6 +41,20 @@ type SiteSettingsRow = {
   course_formats_json: string;
 };
 
+type StoredPushSubscription = {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+};
+
+type PushSubscriptionRow = {
+  endpoint: string;
+  subscription_json: string;
+};
+
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "physique.db");
 const requestedProvider = process.env.DATABASE_PROVIDER;
@@ -198,6 +212,13 @@ function initSqliteDb(database: Database.Database) {
       course_formats_json TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      endpoint TEXT PRIMARY KEY,
+      subscription_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   const reservationColumns = database.prepare("PRAGMA table_info(reservations)").all() as Array<{ name: string }>;
@@ -338,6 +359,11 @@ async function ensureSupabaseSeed() {
       if (patchResult.error) {
         throw formatSupabaseError(patchResult.error);
       }
+    }
+
+    const pushSubscriptionsResult = await supabase.from("push_subscriptions").select("endpoint").limit(1);
+    if (pushSubscriptionsResult.error && pushSubscriptionsResult.error.message.includes("does not exist")) {
+      throw formatSupabaseError(pushSubscriptionsResult.error);
     }
   })().catch((error) => {
     supabaseSeedPromise = null;
@@ -819,4 +845,95 @@ async function updateSiteSettingsSupabase(settings: SiteSettings) {
 
 export async function updateSiteSettings(settings: SiteSettings) {
   return getProvider() === "supabase" ? updateSiteSettingsSupabase(settings) : updateSiteSettingsSqlite(settings);
+}
+
+async function getPushSubscriptionsSqlite() {
+  const rows = getSqliteDb().prepare("SELECT endpoint, subscription_json FROM push_subscriptions").all() as PushSubscriptionRow[];
+  return rows
+    .map((row) => parseJson<StoredPushSubscription | null>(row.subscription_json, null))
+    .filter(
+      (subscription): subscription is StoredPushSubscription =>
+        Boolean(subscription?.endpoint && subscription.keys?.auth && subscription.keys?.p256dh),
+    );
+}
+
+async function getPushSubscriptionsSupabase() {
+  await ensureSupabaseSeed();
+  const { data, error } = await getSupabaseClient()
+    .from("push_subscriptions")
+    .select("endpoint, subscription_json")
+    .returns<PushSubscriptionRow[]>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return (data ?? [])
+    .map((row) => parseJson<StoredPushSubscription | null>(row.subscription_json, null))
+    .filter(
+      (subscription): subscription is StoredPushSubscription =>
+        Boolean(subscription?.endpoint && subscription.keys?.auth && subscription.keys?.p256dh),
+    );
+}
+
+export async function getPushSubscriptions() {
+  return getProvider() === "supabase" ? getPushSubscriptionsSupabase() : getPushSubscriptionsSqlite();
+}
+
+async function upsertPushSubscriptionSqlite(subscription: StoredPushSubscription) {
+  const now = new Date().toISOString();
+  getSqliteDb().prepare(
+    `
+      INSERT INTO push_subscriptions (endpoint, subscription_json, created_at, updated_at)
+      VALUES (@endpoint, @subscriptionJson, @createdAt, @updatedAt)
+      ON CONFLICT(endpoint) DO UPDATE SET
+        subscription_json = excluded.subscription_json,
+        updated_at = excluded.updated_at
+    `,
+  ).run({
+    endpoint: subscription.endpoint,
+    subscriptionJson: JSON.stringify(subscription),
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+async function upsertPushSubscriptionSupabase(subscription: StoredPushSubscription) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient().from("push_subscriptions").upsert(
+    {
+      endpoint: subscription.endpoint,
+      subscription_json: JSON.stringify(subscription),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "endpoint" },
+  );
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function upsertPushSubscription(subscription: StoredPushSubscription) {
+  return getProvider() === "supabase"
+    ? upsertPushSubscriptionSupabase(subscription)
+    : upsertPushSubscriptionSqlite(subscription);
+}
+
+async function deletePushSubscriptionByEndpointSqlite(endpoint: string) {
+  getSqliteDb().prepare("DELETE FROM push_subscriptions WHERE endpoint = ?").run(endpoint);
+}
+
+async function deletePushSubscriptionByEndpointSupabase(endpoint: string) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient().from("push_subscriptions").delete().eq("endpoint", endpoint);
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function deletePushSubscriptionByEndpoint(endpoint: string) {
+  return getProvider() === "supabase"
+    ? deletePushSubscriptionByEndpointSupabase(endpoint)
+    : deletePushSubscriptionByEndpointSqlite(endpoint);
 }

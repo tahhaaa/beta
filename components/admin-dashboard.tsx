@@ -15,6 +15,13 @@ type AdminDashboardProps = {
 
 type EditableReservation = Omit<Reservation, "id" | "createdAt" | "updatedAt" | "confirmedAt">;
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
 export function AdminDashboard({
   initialReservations,
   initialStats,
@@ -28,6 +35,10 @@ export function AdminDashboard({
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState<"all" | Reservation["level"]>("all");
   const [isSavingReservation, startSavingReservation] = useTransition();
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushReady, setPushReady] = useState(false);
+  const [pushPublicKey, setPushPublicKey] = useState("");
+  const [isConfiguringPush, setIsConfiguringPush] = useState(false);
 
   const latestId = useMemo(() => reservations[0]?.id ?? 0, [reservations]);
   const enabledFormats = useMemo(() => settings.courseFormats.filter((format) => format.enabled), [settings.courseFormats]);
@@ -64,6 +75,46 @@ export function AdminDashboard({
       toast.error("Actualisation impossible pour le moment.");
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPushStatus() {
+      try {
+        const response = await fetch("/api/admin/push", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as { enabled: boolean; publicKey: string };
+        if (cancelled) {
+          return;
+        }
+
+        setPushReady(payload.enabled);
+        setPushPublicKey(payload.publicKey);
+
+        if (!payload.enabled || !("serviceWorker" in navigator)) {
+          return;
+        }
+
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (!cancelled) {
+          setPushEnabled(Boolean(subscription));
+        }
+      } catch {
+        if (!cancelled) {
+          setPushReady(false);
+        }
+      }
+    }
+
+    loadPushStatus().catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(async () => {
@@ -204,6 +255,68 @@ export function AdminDashboard({
     window.open(`https://api.whatsapp.com/send/?phone=${phone}&text=${message}&type=phone_number&app_absent=0`, "_blank", "noopener,noreferrer");
   }
 
+  async function handlePushToggle() {
+    if (!pushReady) {
+      toast.error("Ajoutez d'abord les clés VAPID pour activer les notifications push.");
+      return;
+    }
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      toast.error("Les notifications push ne sont pas supportées sur ce navigateur.");
+      return;
+    }
+
+    setIsConfiguringPush(true);
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast.error("Autorisez les notifications pour activer les alertes push.");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      const existingSubscription = await registration.pushManager.getSubscription();
+
+      if (existingSubscription) {
+        await fetch("/api/admin/push", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: existingSubscription.endpoint }),
+        });
+        await existingSubscription.unsubscribe();
+        setPushEnabled(false);
+        toast.success("Notifications push désactivées.");
+        return;
+      }
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(pushPublicKey),
+      });
+
+      const response = await fetch("/api/admin/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(subscription.toJSON()),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) {
+        await subscription.unsubscribe();
+        toast.error(payload.message ?? "Activation push impossible.");
+        return;
+      }
+
+      setPushEnabled(true);
+      toast.success("Notifications push activées.");
+    } catch {
+      toast.error("Activation push impossible.");
+    } finally {
+      setIsConfiguringPush(false);
+    }
+  }
+
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -213,15 +326,11 @@ export function AdminDashboard({
         </div>
         <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
           <button
-            onClick={() => {
-              if ("Notification" in window && Notification.permission === "default") {
-                Notification.requestPermission().catch(() => null);
-              }
-            }}
+            onClick={handlePushToggle}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10 sm:px-5"
           >
             <BellRing className="h-4 w-4 text-cyan-300" />
-            Activer notifications
+            {isConfiguringPush ? "Configuration..." : pushEnabled ? "Push activées" : "Activer push"}
           </button>
           <button
             onClick={handleLogout}

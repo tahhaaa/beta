@@ -36,6 +36,13 @@ create table if not exists public.site_settings (
   constraint site_settings_single_row check (id = 1)
 );
 
+create table if not exists public.push_subscriptions (
+  endpoint text primary key,
+  subscription_json text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create index if not exists reservations_created_at_idx on public.reservations (created_at desc);
 create index if not exists reservations_status_idx on public.reservations (status);
 
@@ -43,3 +50,4 @@ alter table public.admins enable row level security;
 alter table public.reservations enable row level security;
 alter table public.pricing enable row level security;
 alter table public.site_settings enable row level security;
+alter table public.push_subscriptions enable row level security;

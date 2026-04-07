@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/api-error";
 import { createReservation } from "@/lib/db";
+import { sendReservationPushNotification } from "@/lib/push";
 import { reservationSchema } from "@/lib/validation";
 
 export async function POST(request: Request) {
@@ -21,6 +22,11 @@ export async function POST(request: Request) {
 
   try {
     const reservation = await createReservation(parsed.data);
+    if (!reservation) {
+      return NextResponse.json({ message: "Impossible d'enregistrer la réservation." }, { status: 500 });
+    }
+
+    await sendReservationPushNotification(reservation);
     return NextResponse.json(
       {
         message: "Réservation enregistrée avec succès.",
