@@ -205,27 +205,27 @@ export function AdminDashboard({
   }
 
   return (
-    <div className="space-y-8 lg:space-y-10">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <div className="space-y-6 sm:space-y-8 lg:space-y-10">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">Panneau d’administration</p>
-          <h1 className="mt-2 font-heading text-3xl font-semibold text-white sm:text-4xl">Pilotage complet du centre</h1>
+          <h1 className="mt-2 font-heading text-2xl font-semibold text-white sm:text-3xl lg:text-4xl">Pilotage complet du centre</h1>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
           <button
             onClick={() => {
               if ("Notification" in window && Notification.permission === "default") {
                 Notification.requestPermission().catch(() => null);
               }
             }}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 font-medium text-white transition hover:bg-white/10"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10 sm:px-5"
           >
             <BellRing className="h-4 w-4 text-cyan-300" />
             Activer notifications
           </button>
           <button
             onClick={handleLogout}
-            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 font-medium text-white transition hover:bg-white/10"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10 sm:px-5"
           >
             <LogOut className="h-4 w-4 text-cyan-300" />
             Déconnexion
@@ -240,25 +240,39 @@ export function AdminDashboard({
         <StatCard label="Bénéfices estimés" value={formatCurrency(stats.estimatedRevenue)} />
       </div>
 
-      <nav className="sticky top-4 z-30 rounded-[1.5rem] border border-white/10 bg-brand-950/85 p-3 backdrop-blur">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <a href="#benefices" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10">
+      <nav className="rounded-[1.5rem] border border-white/10 bg-brand-950/85 p-2.5 backdrop-blur lg:sticky lg:top-4 lg:z-30 lg:p-3">
+        <div className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
+            <a
+              href="#benefices"
+              className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+            >
             Bénéfices
-          </a>
-          <a href="#statistiques" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10">
+            </a>
+            <a
+              href="#statistiques"
+              className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+            >
             Statistiques
-          </a>
-          <a href="#parametres" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10">
+            </a>
+            <a
+              href="#parametres"
+              className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+            >
             Paramètres
-          </a>
-          <a href="#reservations" className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10">
+            </a>
+            <a
+              href="#reservations"
+              className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
+            >
             Réservations
-          </a>
+            </a>
+          </div>
         </div>
       </nav>
 
-      <div className="grid gap-6 2xl:grid-cols-[0.9fr_0.9fr_1.2fr]">
-        <section id="benefices" className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-7">
+      <div className="grid gap-5 xl:gap-6 2xl:grid-cols-[0.9fr_0.9fr_1.2fr]">
+        <section id="benefices" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
           <div className="flex items-center gap-3">
             <Wallet className="h-6 w-6 text-cyan-300" />
             <div>
@@ -320,7 +334,7 @@ export function AdminDashboard({
           </div>
         </section>
 
-        <section id="statistiques" className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-7">
+        <section id="statistiques" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
           <h2 className="text-2xl font-semibold text-white">Répartition des groupes</h2>
           <div className="mt-6 grid gap-4">
             {stats.levelBreakdown.map((item) => (
@@ -347,7 +361,7 @@ export function AdminDashboard({
           </div>
         </section>
 
-        <section id="parametres" className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-7">
+        <section id="parametres" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
           <div className="flex items-center gap-3">
             <Settings2 className="h-6 w-6 text-cyan-300" />
             <div>
@@ -419,26 +433,26 @@ export function AdminDashboard({
         </section>
       </div>
 
-      <section id="reservations" className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-7">
+      <section id="reservations" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h2 className="text-2xl font-semibold text-white">Gestion réservations</h2>
             <p className="mt-1 text-sm text-slate-300">Le panneau s’adapte mieux au mobile avec une vue cartes et des actions regroupées.</p>
           </div>
-          <div className="flex flex-col gap-3 md:flex-row">
+          <div className="flex flex-col gap-3 lg:flex-row">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Rechercher..."
-                className="w-full rounded-full border border-white/10 bg-brand-950/60 py-3 pl-10 pr-4 text-sm text-white outline-none md:w-72"
+                className="w-full rounded-full border border-white/10 bg-brand-950/60 py-3 pl-10 pr-4 text-sm text-white outline-none sm:w-full lg:w-72"
               />
             </label>
             <select
               value={groupFilter}
               onChange={(event) => setGroupFilter(event.target.value as "all" | Reservation["level"])}
-              className="rounded-full border border-white/10 bg-brand-950/60 px-4 py-3 text-sm text-white outline-none"
+              className="w-full rounded-full border border-white/10 bg-brand-950/60 px-4 py-3 text-sm text-white outline-none lg:w-auto"
             >
               <option value="all">Tous les groupes</option>
               {SCHOOL_LEVELS.map((level) => (
@@ -449,7 +463,7 @@ export function AdminDashboard({
             </select>
             <button
               onClick={() => refreshDashboard().catch(() => null)}
-              className="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:bg-white/10"
+              className="w-full rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:bg-white/10 lg:w-auto"
             >
               Actualiser
             </button>
