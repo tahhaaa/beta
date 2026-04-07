@@ -39,6 +39,7 @@ export function AdminDashboard({
   const [pushReady, setPushReady] = useState(false);
   const [pushPublicKey, setPushPublicKey] = useState("");
   const [isConfiguringPush, setIsConfiguringPush] = useState(false);
+  const [isSendingPushTest, setIsSendingPushTest] = useState(false);
 
   const latestId = useMemo(() => reservations[0]?.id ?? 0, [reservations]);
   const enabledFormats = useMemo(() => settings.courseFormats.filter((format) => format.enabled), [settings.courseFormats]);
@@ -317,6 +318,26 @@ export function AdminDashboard({
     }
   }
 
+  async function handlePushTest() {
+    setIsSendingPushTest(true);
+
+    try {
+      const response = await fetch("/api/admin/push/test", { method: "POST" });
+      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+
+      if (!response.ok) {
+        toast.error(payload.message ?? "Test push impossible.");
+        return;
+      }
+
+      toast.success("Test push envoye. Verifiez vos notifications navigateur.");
+    } catch {
+      toast.error("Test push impossible.");
+    } finally {
+      setIsSendingPushTest(false);
+    }
+  }
+
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -324,13 +345,21 @@ export function AdminDashboard({
           <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">Panneau d’administration</p>
           <h1 className="mt-2 font-heading text-2xl font-semibold text-white sm:text-3xl lg:text-4xl">Pilotage complet du centre</h1>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row lg:justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row lg:flex-wrap lg:justify-end">
           <button
             onClick={handlePushToggle}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10 sm:px-5"
           >
             <BellRing className="h-4 w-4 text-cyan-300" />
             {isConfiguringPush ? "Configuration..." : pushEnabled ? "Push activées" : "Activer push"}
+          </button>
+          <button
+            onClick={handlePushTest}
+            disabled={!pushEnabled || isSendingPushTest}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50 sm:px-5"
+          >
+            {isSendingPushTest ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Tester push
           </button>
           <button
             onClick={handleLogout}

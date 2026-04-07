@@ -42,18 +42,48 @@ export async function sendReservationPushNotification(reservation: Reservation) 
 
   configureWebPush();
   const subscriptions = await getPushSubscriptions();
+  const payload = JSON.stringify({
+    title: "Nouvelle réservation",
+    body: `${reservation.studentName} - ${reservation.level} - ${reservation.courseFormat}`,
+    url: "/admin#reservations",
+  });
 
   await Promise.all(
     subscriptions.map(async (subscription) => {
       try {
-        await webpush.sendNotification(
-          subscription,
-          JSON.stringify({
-            title: "Nouvelle réservation",
-            body: `${reservation.studentName} - ${reservation.level} - ${reservation.courseFormat}`,
-            url: "/admin#reservations",
-          }),
-        );
+        await webpush.sendNotification(subscription, payload);
+      } catch (error) {
+        const statusCode =
+          typeof error === "object" && error !== null && "statusCode" in error
+            ? Number((error as { statusCode?: number }).statusCode)
+            : 0;
+
+        if (statusCode === 404 || statusCode === 410) {
+          await deletePushSubscriptionByEndpoint(subscription.endpoint);
+        }
+      }
+    }),
+  );
+}
+
+export async function sendPushTestNotification() {
+  if (!isPushConfigured()) {
+    return;
+  }
+
+  configureWebPush();
+  const subscriptions = await getPushSubscriptions();
+
+  const payload = JSON.stringify({
+    title: "Test notification push",
+    body: "Le systeme push βeta Physique fonctionne correctement.",
+    url: "/admin",
+  });
+
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(subscription, payload);
       } catch (error) {
         const statusCode =
           typeof error === "object" && error !== null && "statusCode" in error
