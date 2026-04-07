@@ -12,6 +12,7 @@ export const reservationSchema = z.object({
     .string()
     .min(8, "Le numéro WhatsApp est trop court.")
     .max(20, "Le numéro WhatsApp est trop long."),
+  city: z.string().min(2, "La ville est obligatoire."),
 });
 
 export const loginSchema = z.object({
