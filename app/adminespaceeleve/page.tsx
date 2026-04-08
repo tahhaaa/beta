@@ -24,7 +24,7 @@ export default async function AdminEspaceElevePage() {
   }));
 
   return (
-    <main className="min-h-screen px-6 py-16 lg:px-8">
+    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="mx-auto max-w-7xl space-y-6">
         <Link href="/admin" className="inline-flex items-center gap-2 text-sm font-medium text-cyan-300 transition hover:text-cyan-200">
           <ArrowLeft className="h-4 w-4" />

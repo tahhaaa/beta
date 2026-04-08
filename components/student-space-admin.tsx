@@ -261,18 +261,18 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[0.88fr_1.12fr]">
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6">
+    <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)]">
+      <section className="self-start rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-hidden">
         <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">Élèves confirmés</p>
         <h2 className="mt-2 font-heading text-2xl font-semibold text-white">Codes d’accès et rythme individuel</h2>
-        <div className="mt-6 space-y-4">
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:max-h-[calc(100vh-11rem)] xl:grid-cols-1 xl:overflow-y-auto xl:pr-1">
           {spaces.length ? (
             spaces.map((space) => (
               <button
                 key={space.id}
                 type="button"
                 onClick={() => handleSelect(space.id)}
-                className={`w-full rounded-[1.6rem] border p-5 text-left transition ${
+                className={`w-full rounded-[1.6rem] border p-4 text-left transition sm:p-5 ${
                   selectedSpace?.id === space.id
                     ? "border-cyan-300/40 bg-cyan-400/10"
                     : "border-white/10 bg-brand-950/45 hover:bg-white/5"
@@ -299,10 +299,10 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
         </div>
       </section>
 
-      <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6">
+      <section className="min-w-0 rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur sm:p-6 lg:p-7">
         {selectedSpace ? (
           <div className="space-y-6">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">Admin espace élève</p>
                 <h2 className="mt-2 font-heading text-2xl font-semibold text-white">{selectedSpace.reservation?.studentName ?? "Élève confirmé"}</h2>
@@ -310,20 +310,20 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
                   Code: <span className="font-semibold text-cyan-200">{selectedSpace.accessCode}</span>
                 </p>
               </div>
-              <a href="/espaceeleve" className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:bg-white/10">
+              <a href="/espaceeleve" className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:bg-white/10 lg:justify-start">
                 <ExternalLink className="h-4 w-4 text-cyan-300" />
                 Voir la page élève
               </a>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
               <MetricCard icon={<Target className="h-5 w-5 text-cyan-300" />} label="Objectif séances" value={`${selectedSpace.targetSessionCount}`} helper="Jusqu’au 11 juillet 2026" />
               <MetricCard icon={<Gauge className="h-5 w-5 text-cyan-300" />} label="Progression" value={`${targetProgress}%`} helper={`${doneSessionsCount} séance(s) terminée(s)`} />
               <MetricCard icon={<CalendarDays className="h-5 w-5 text-cyan-300" />} label="Publiées" value={`${sessions.length}`} helper={`${plannedSessionsCount} à venir`} />
               <MetricCard icon={<NotebookPen className="h-5 w-5 text-cyan-300" />} label="Tâches ouvertes" value={`${pendingTasksCount}`} helper={`${tasks.length} tâche(s) au total`} />
             </div>
 
-            <div className="grid gap-4 rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5 lg:grid-cols-3">
+            <div className="grid gap-4 rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-4 sm:p-5 lg:grid-cols-2 2xl:grid-cols-3">
               <label className="block">
                 <span className="mb-2 block text-sm text-slate-200">Portail actif</span>
                 <select
@@ -360,7 +360,7 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
                 </select>
               </label>
 
-              <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4 lg:col-span-1">
+              <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-4 lg:col-span-2 2xl:col-span-1">
                 <div className="flex items-center gap-2">
                   <TimerReset className="h-4 w-4 text-cyan-300" />
                   <p className="text-sm font-semibold text-white">Objectif total de séances</p>
@@ -398,8 +398,8 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-2">
-              <form onSubmit={handleCreateSession} className="rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
+            <div className="grid gap-6 2xl:grid-cols-2">
+              <form onSubmit={handleCreateSession} className="min-w-0 rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
                 <div className="flex items-center gap-3">
                   <CalendarDays className="h-5 w-5 text-cyan-300" />
                   <h3 className="font-heading text-xl font-semibold text-white">Ajouter une séance</h3>
@@ -416,7 +416,7 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
                 </div>
               </form>
 
-              <form onSubmit={handleCreateTask} className="rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
+              <form onSubmit={handleCreateTask} className="min-w-0 rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
                 <div className="flex items-center gap-3">
                   <NotebookPen className="h-5 w-5 text-cyan-300" />
                   <h3 className="font-heading text-xl font-semibold text-white">Ajouter une tâche</h3>
@@ -434,8 +434,8 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
               </form>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-2">
-              <div className="rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
+            <div className="grid gap-6 2xl:grid-cols-2">
+              <div className="min-w-0 rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
                 <h3 className="font-heading text-xl font-semibold text-white">Séances publiées</h3>
                 {isLoadingContent ? <p className="mt-4 text-sm text-slate-400">Chargement...</p> : null}
                 <div className="mt-4 space-y-4">
@@ -455,7 +455,7 @@ export function StudentSpaceAdmin({ initialSpaces }: StudentSpaceAdminProps) {
                 </div>
               </div>
 
-              <div className="rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
+              <div className="min-w-0 rounded-[1.6rem] border border-white/10 bg-brand-950/45 p-5">
                 <h3 className="font-heading text-xl font-semibold text-white">Tâches publiées</h3>
                 {isLoadingContent ? <p className="mt-4 text-sm text-slate-400">Chargement...</p> : null}
                 <div className="mt-4 space-y-4">
