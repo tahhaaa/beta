@@ -47,9 +47,19 @@ create table if not exists public.push_subscriptions (
 create index if not exists reservations_created_at_idx on public.reservations (created_at desc);
 create index if not exists reservations_status_idx on public.reservations (status);
 
+alter table public.site_settings add column if not exists center_address text default '';
+alter table public.site_settings add column if not exists maps_url text default '';
 alter table public.site_settings add column if not exists direct_whatsapp text not null default '';
 alter table public.site_settings add column if not exists professor_note text not null default '';
 alter table public.site_settings add column if not exists maintenance_mode boolean not null default false;
+alter table public.site_settings alter column center_address set default '';
+alter table public.site_settings alter column maps_url set default '';
+update public.site_settings
+set center_address = coalesce(center_address, ''),
+    maps_url = coalesce(maps_url, '')
+where id = 1;
+alter table public.site_settings alter column center_address drop not null;
+alter table public.site_settings alter column maps_url drop not null;
 
 alter table public.admins enable row level security;
 alter table public.reservations enable row level security;
