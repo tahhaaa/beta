@@ -76,29 +76,12 @@ export function ReservationForm({ courseFormats, directWhatsapp }: ReservationFo
         <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-400/15 text-emerald-300">
           <CheckCircle2 className="h-8 w-8" />
         </div>
-        <div>
+      <div>
           <p className="text-sm font-semibold uppercase tracking-[0.28em] text-emerald-200">Demande envoyée</p>
           <h2 className="mt-3 font-heading text-3xl font-semibold text-white">Réservation bien reçue, {submittedName}.</h2>
           <p className="mt-4 max-w-xl leading-7 text-slate-200">
             Le professeur analysera le profil et vous recontactera pour confirmer le groupe, le format de cours et la suite de l’inscription.
           </p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setSubmittedName("")}
-            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-4 font-semibold text-white transition hover:bg-white/10"
-          >
-            Envoyer une autre demande
-          </button>
-          <a
-            href={getWhatsappLink(directWhatsapp, "Bonjour, je viens d'envoyer une reservation et je souhaite confirmer quelques details.")}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center justify-center rounded-full bg-cyan-400 px-5 py-4 font-semibold text-brand-950 transition hover:bg-cyan-300"
-          >
-            Continuer sur WhatsApp
-          </a>
         </div>
       </div>
     );

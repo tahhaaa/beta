@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { BarChart3, BellRing, Check, Download, KeyRound, LoaderCircle, LogOut, Pencil, Search, Settings2, ShieldCheck, Trash2, Wallet } from "lucide-react";
+import { BarChart3, BellRing, Check, Download, KeyRound, LoaderCircle, LogOut, Pencil, Search, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { SCHOOL_LEVELS } from "@/lib/constants";
 import type { DashboardStats, Reservation, SiteSettings } from "@/lib/types";
-import { formatCurrency, formatDate, getCoursePriceLabel, normalizeMoroccanPhone } from "@/lib/utils";
+import { formatDate, getCoursePriceLabel, normalizeMoroccanPhone } from "@/lib/utils";
 
 type AdminDashboardProps = {
   initialReservations: Reservation[];
@@ -469,18 +469,12 @@ export function AdminDashboard({
         <StatCard label="Total réservations" value={String(stats.totalReservations)} />
         <StatCard label="Réservations aujourd’hui" value={String(stats.todayReservations)} />
         <StatCard label="Confirmées" value={String(stats.confirmedReservations)} />
-        <StatCard label="Bénéfices estimés" value={formatCurrency(stats.estimatedRevenue)} />
+        <StatCard label="En attente" value={String(stats.totalReservations - stats.confirmedReservations)} />
       </div>
 
       <nav className="rounded-[1.5rem] border border-white/10 bg-brand-950/85 p-2.5 backdrop-blur lg:sticky lg:top-4 lg:z-30 lg:p-3">
         <div className="-mx-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
-            <a
-              href="#benefices"
-              className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
-            >
-            Bénéfices
-            </a>
             <a
               href="#statistiques"
               className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
@@ -509,69 +503,7 @@ export function AdminDashboard({
         </div>
       </nav>
 
-      <div className="grid gap-5 xl:gap-6 2xl:grid-cols-[0.9fr_0.9fr_1.2fr]">
-        <section id="benefices" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
-          <div className="flex items-center gap-3">
-            <Wallet className="h-6 w-6 text-cyan-300" />
-            <div>
-              <h2 className="text-2xl font-semibold text-white">Gestion bénéfices</h2>
-              <p className="text-sm text-slate-300">Tarifs entièrement modifiables. Calcul basé uniquement sur les réservations confirmées.</p>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-emerald-400/15 bg-emerald-400/10 p-4">
-              <p className="text-sm text-emerald-200">Revenu confirmé</p>
-              <p className="mt-2 text-2xl font-semibold text-white">{formatCurrency(stats.estimatedRevenue)}</p>
-            </div>
-            <div className="rounded-2xl border border-amber-400/15 bg-amber-400/10 p-4">
-              <p className="text-sm text-amber-100">Potentiel en attente</p>
-              <p className="mt-2 text-2xl font-semibold text-white">{formatCurrency(stats.pendingRevenue)}</p>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-white/10 bg-brand-950/40 p-4">
-            <h3 className="text-lg font-semibold text-white">Tarifs des cours</h3>
-            <p className="mt-2 text-sm text-slate-300">
-              Un seul prix par type de cours. Le meme tarif s'applique au bon et au mauvais niveau.
-            </p>
-            <div className="mt-4 space-y-4">
-              {settings.courseFormats.map((format) => (
-                <label key={format.id} className="block">
-                  <span className="mb-2 block text-sm font-medium text-slate-200">{format.label}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={settings.formatPricing[format.id]}
-                    onChange={(event) =>
-                      setSettings((current) => ({
-                        ...current,
-                        formatPricing: {
-                          ...current.formatPricing,
-                          [format.id]: Number(event.target.value),
-                        },
-                      }))
-                    }
-                    className="w-full rounded-2xl border border-white/10 bg-brand-950/60 px-4 py-3 text-white outline-none"
-                  />
-                  <span className="mt-2 block text-xs text-slate-400">
-                    {getCoursePriceLabel(format.id, settings.formatPricing[format.id])}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                saveSettings().catch(() => null);
-              }}
-              className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-cyan-400 px-5 py-4 font-semibold text-brand-950 transition hover:bg-cyan-300"
-            >
-              Enregistrer les tarifs
-            </button>
-          </div>
-        </section>
-
+      <div className="grid gap-5 xl:gap-6 2xl:grid-cols-[0.95fr_1.05fr]">
         <section id="statistiques" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
           <h2 className="text-2xl font-semibold text-white">Répartition des groupes</h2>
           <div className="mt-6 grid gap-4">
@@ -581,21 +513,6 @@ export function AdminDashboard({
                 <p className="mt-2 font-heading text-3xl font-semibold text-white">{item.count}</p>
               </div>
             ))}
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-white/10 bg-brand-950/40 p-4">
-            <h3 className="text-lg font-semibold text-white">Revenus par format</h3>
-            <div className="mt-4 space-y-3">
-              {stats.revenueByFormat.map((item) => (
-                <div key={item.format} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-slate-200">{item.format}</span>
-                    <span className="text-sm text-slate-400">{item.count} confirmé(s)</span>
-                  </div>
-                  <p className="mt-2 text-xl font-semibold text-white">{formatCurrency(item.revenue)}</p>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
@@ -615,6 +532,9 @@ export function AdminDashboard({
               value={settings.directWhatsapp}
               onChange={(value) => setSettings({ ...settings, directWhatsapp: value })}
             />
+            <div className="rounded-2xl border border-white/10 bg-brand-950/40 p-4 text-sm leading-6 text-slate-300">
+              Les tarifs et calculs financiers sont masqués dans ce panneau pour garder un pilotage plus simple.
+            </div>
             <TextareaField
               label="Note d'organisation"
               value={settings.professorNote}

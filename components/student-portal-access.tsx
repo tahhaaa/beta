@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, KeyRound, LoaderCircle, Link2, NotebookPen } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BellRing, CalendarDays, CheckCircle2, Clock3, KeyRound, LoaderCircle, Link2, NotebookPen } from "lucide-react";
 import { toast } from "sonner";
 import type { Reservation, StudentPortalSession, StudentPortalTask, StudentSpace } from "@/lib/types";
 import { formatDate } from "@/lib/utils";
@@ -17,6 +17,50 @@ export function StudentPortalAccess() {
   const [code, setCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [portal, setPortal] = useState<PortalPayload | null>(null);
+
+  const nextSession = useMemo(() => {
+    if (!portal) {
+      return null;
+    }
+
+    return portal.sessions.find((session) => session.status === "scheduled") ?? null;
+  }, [portal]);
+
+  const pendingTasks = useMemo(() => {
+    if (!portal) {
+      return [];
+    }
+
+    return portal.tasks.filter((task) => task.status === "todo");
+  }, [portal]);
+
+  async function handleNotificationPreview() {
+    if (!portal) {
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      toast.error("Les notifications ne sont pas supportées sur ce navigateur.");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      toast.error("Autorisez les notifications pour recevoir les rappels.");
+      return;
+    }
+
+    const message = nextSession
+      ? `Prochaine séance: ${nextSession.title} • ${formatDate(nextSession.scheduledAt)}`
+      : pendingTasks.length
+        ? `Vous avez ${pendingTasks.length} tâche(s) à rendre.`
+        : "Votre espace élève est à jour.";
+
+    new Notification("βeta Physique • Rappel élève", {
+      body: message,
+    });
+    toast.success("Rappel navigateur activé.");
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,7 +120,53 @@ export function StudentPortalAccess() {
       </form>
 
       {portal ? (
-        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="space-y-6">
+          <section className="grid gap-4 md:grid-cols-3">
+            <InfoCard
+              icon={<Clock3 className="h-5 w-5 text-cyan-300" />}
+              title="Prochaine séance"
+              value={nextSession ? formatDate(nextSession.scheduledAt) : "Aucune date publiée"}
+              description={nextSession?.title ?? "Le professeur ajoutera bientôt la prochaine séance."}
+            />
+            <InfoCard
+              icon={<NotebookPen className="h-5 w-5 text-cyan-300" />}
+              title="À rendre"
+              value={`${pendingTasks.length}`}
+              description={pendingTasks.length ? "Tâches encore en attente de rendu." : "Aucune tâche en attente."}
+            />
+            <button
+              type="button"
+              onClick={handleNotificationPreview}
+              className="rounded-[1.6rem] border border-cyan-300/20 bg-cyan-400/10 p-5 text-left transition hover:bg-cyan-400/15"
+            >
+              <BellRing className="h-5 w-5 text-cyan-200" />
+              <p className="mt-4 font-heading text-xl font-semibold text-white">Rappels élève</p>
+              <p className="mt-2 text-sm leading-6 text-slate-200">Active un rappel navigateur pour revoir la prochaine séance ou les tâches urgentes.</p>
+            </button>
+          </section>
+
+          {pendingTasks.length ? (
+            <section className="rounded-[2rem] border border-amber-300/15 bg-amber-400/10 p-6 backdrop-blur sm:p-8">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="h-6 w-6 text-amber-100" />
+                <div>
+                  <h3 className="font-heading text-2xl font-semibold text-white">À rendre bientôt</h3>
+                  <p className="text-sm text-amber-50/85">Les prochains devoirs ou exercices à rendre.</p>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                {pendingTasks.slice(0, 4).map((task) => (
+                  <div key={task.id} className="rounded-[1.4rem] border border-white/10 bg-brand-950/35 p-4">
+                    <p className="font-semibold text-white">{task.title}</p>
+                    <p className="mt-1 text-sm text-amber-50/85">Date limite: {formatDate(task.dueAt)}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-100">{task.details}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
           <section className="rounded-[2rem] border border-white/10 bg-white/5 p-6 backdrop-blur sm:p-8">
             <div className="flex items-center gap-3">
               <CalendarDays className="h-6 w-6 text-cyan-300" />
@@ -95,6 +185,7 @@ export function StudentPortalAccess() {
                       <div>
                         <p className="font-heading text-xl font-semibold text-white">{session.title}</p>
                         <p className="mt-1 text-sm text-slate-300">{formatDate(session.scheduledAt)}</p>
+                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-cyan-300">Ce qu’on va faire</p>
                       </div>
                       <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${session.status === "done" ? "bg-emerald-400/15 text-emerald-300" : session.status === "cancelled" ? "bg-rose-400/15 text-rose-200" : "bg-cyan-400/15 text-cyan-200"}`}>
                         {session.status === "done" ? "Terminée" : session.status === "cancelled" ? "Reportée" : "Prévue"}
@@ -131,6 +222,7 @@ export function StudentPortalAccess() {
                       <div>
                         <p className="font-heading text-lg font-semibold text-white">{task.title}</p>
                         <p className="mt-1 text-sm text-slate-300">À faire avant: {formatDate(task.dueAt)}</p>
+                        <p className="mt-2 text-xs uppercase tracking-[0.16em] text-cyan-300">To do list</p>
                       </div>
                       <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${task.status === "done" ? "bg-emerald-400/15 text-emerald-300" : "bg-amber-400/15 text-amber-200"}`}>
                         {task.status === "done" ? "Fait" : "À faire"}
@@ -150,8 +242,34 @@ export function StudentPortalAccess() {
               )}
             </div>
           </section>
+          </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function InfoCard({
+  icon,
+  title,
+  value,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  value: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[1.6rem] border border-white/10 bg-white/5 p-5 backdrop-blur">
+      <div className="flex items-center gap-3">
+        <div className="rounded-2xl bg-cyan-400/10 p-3">{icon}</div>
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-300">{title}</p>
+          <p className="mt-2 font-heading text-2xl font-semibold text-white">{value}</p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm leading-6 text-slate-300">{description}</p>
     </div>
   );
 }
