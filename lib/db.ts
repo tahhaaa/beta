@@ -3,7 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
 import { COURSE_FORMATS, DEFAULT_PRICING, DEFAULT_SITE_SETTINGS, SCHOOL_LEVELS } from "@/lib/constants";
-import { getDefaultAdminSeed } from "@/lib/auth";
+import { getDefaultAdminSeed, hashPassword } from "@/lib/auth";
 import type { DashboardStats, Pricing, Reservation, ReservationStatus, SiteSettings, StudentProfile } from "@/lib/types";
 import { normalizeMoroccanPhone } from "@/lib/utils";
 
@@ -35,8 +35,9 @@ type PricingRow = {
 
 type SiteSettingsRow = {
   center_name: string;
-  center_address: string;
-  maps_url: string;
+  direct_whatsapp: string | null;
+  professor_note: string | null;
+  maintenance_mode: number | boolean | null;
   format_pricing_json: string | null;
   course_formats_json: string;
 };
@@ -57,6 +58,7 @@ type PushSubscriptionRow = {
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "physique.db");
+const backupDir = path.join(dataDir, "backups");
 const requestedProvider = process.env.DATABASE_PROVIDER;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
 const supabaseServiceKey =
@@ -145,8 +147,9 @@ function normalizeSettings(row?: SiteSettingsRow | null): SiteSettings {
 
   return {
     centerName: row.center_name,
-    centerAddress: row.center_address,
-    mapsUrl: row.maps_url,
+    directWhatsapp: row.direct_whatsapp ?? DEFAULT_SITE_SETTINGS.directWhatsapp,
+    professorNote: row.professor_note ?? DEFAULT_SITE_SETTINGS.professorNote,
+    maintenanceMode: Boolean(row.maintenance_mode),
     formatPricing: {
       ...DEFAULT_SITE_SETTINGS.formatPricing,
       ...parseJson(row.format_pricing_json, DEFAULT_SITE_SETTINGS.formatPricing),
@@ -206,8 +209,9 @@ function initSqliteDb(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS site_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       center_name TEXT NOT NULL,
-      center_address TEXT NOT NULL,
-      maps_url TEXT NOT NULL,
+      direct_whatsapp TEXT NOT NULL DEFAULT '',
+      professor_note TEXT NOT NULL DEFAULT '',
+      maintenance_mode INTEGER NOT NULL DEFAULT 0,
       format_pricing_json TEXT NOT NULL DEFAULT '{}',
       course_formats_json TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -229,6 +233,15 @@ function initSqliteDb(database: Database.Database) {
   const settingsColumns = database.prepare("PRAGMA table_info(site_settings)").all() as Array<{ name: string }>;
   if (!settingsColumns.some((column) => column.name === "format_pricing_json")) {
     database.exec("ALTER TABLE site_settings ADD COLUMN format_pricing_json TEXT NOT NULL DEFAULT '{}'");
+  }
+  if (!settingsColumns.some((column) => column.name === "direct_whatsapp")) {
+    database.exec("ALTER TABLE site_settings ADD COLUMN direct_whatsapp TEXT NOT NULL DEFAULT ''");
+  }
+  if (!settingsColumns.some((column) => column.name === "professor_note")) {
+    database.exec("ALTER TABLE site_settings ADD COLUMN professor_note TEXT NOT NULL DEFAULT ''");
+  }
+  if (!settingsColumns.some((column) => column.name === "maintenance_mode")) {
+    database.exec("ALTER TABLE site_settings ADD COLUMN maintenance_mode INTEGER NOT NULL DEFAULT 0");
   }
 
   const seed = getDefaultAdminSeed();
@@ -254,14 +267,15 @@ function initSqliteDb(database: Database.Database) {
 
   database.prepare(
     `
-      INSERT INTO site_settings (id, center_name, center_address, maps_url, course_formats_json)
-      VALUES (1, @centerName, @centerAddress, @mapsUrl, @courseFormatsJson)
+      INSERT INTO site_settings (id, center_name, direct_whatsapp, professor_note, maintenance_mode, course_formats_json)
+      VALUES (1, @centerName, @directWhatsapp, @professorNote, @maintenanceMode, @courseFormatsJson)
       ON CONFLICT(id) DO NOTHING
     `,
   ).run({
     centerName: DEFAULT_SITE_SETTINGS.centerName,
-    centerAddress: DEFAULT_SITE_SETTINGS.centerAddress,
-    mapsUrl: DEFAULT_SITE_SETTINGS.mapsUrl,
+    directWhatsapp: DEFAULT_SITE_SETTINGS.directWhatsapp,
+    professorNote: DEFAULT_SITE_SETTINGS.professorNote,
+    maintenanceMode: DEFAULT_SITE_SETTINGS.maintenanceMode ? 1 : 0,
     courseFormatsJson: JSON.stringify(DEFAULT_SITE_SETTINGS.courseFormats),
   });
 
@@ -316,8 +330,9 @@ async function ensureSupabaseSeed() {
       {
         id: 1,
         center_name: DEFAULT_SITE_SETTINGS.centerName,
-        center_address: DEFAULT_SITE_SETTINGS.centerAddress,
-        maps_url: DEFAULT_SITE_SETTINGS.mapsUrl,
+        direct_whatsapp: DEFAULT_SITE_SETTINGS.directWhatsapp,
+        professor_note: DEFAULT_SITE_SETTINGS.professorNote,
+        maintenance_mode: DEFAULT_SITE_SETTINGS.maintenanceMode,
         format_pricing_json: JSON.stringify(DEFAULT_SITE_SETTINGS.formatPricing),
         course_formats_json: JSON.stringify(DEFAULT_SITE_SETTINGS.courseFormats),
         updated_at: new Date().toISOString(),
@@ -329,11 +344,13 @@ async function ensureSupabaseSeed() {
       throw formatSupabaseError(settingsResult.error);
     }
 
-    const existingSettings = await supabase
+  const existingSettings = await supabase
       .from("site_settings")
-      .select("format_pricing_json, course_formats_json")
+      .select("format_pricing_json, course_formats_json, direct_whatsapp, professor_note, maintenance_mode")
       .eq("id", 1)
-      .maybeSingle<Pick<SiteSettingsRow, "format_pricing_json" | "course_formats_json">>();
+      .maybeSingle<
+        Pick<SiteSettingsRow, "format_pricing_json" | "course_formats_json" | "direct_whatsapp" | "professor_note" | "maintenance_mode">
+      >();
 
     if (existingSettings.error) {
       throw formatSupabaseError(existingSettings.error);
@@ -352,6 +369,9 @@ async function ensureSupabaseSeed() {
           course_formats_json: needsCourseFormats
             ? JSON.stringify(DEFAULT_SITE_SETTINGS.courseFormats)
             : existingSettings.data?.course_formats_json,
+          direct_whatsapp: existingSettings.data?.direct_whatsapp || DEFAULT_SITE_SETTINGS.directWhatsapp,
+          professor_note: existingSettings.data?.professor_note || DEFAULT_SITE_SETTINGS.professorNote,
+          maintenance_mode: existingSettings.data?.maintenance_mode ?? DEFAULT_SITE_SETTINGS.maintenanceMode,
           updated_at: new Date().toISOString(),
         })
         .eq("id", 1);
@@ -737,6 +757,19 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const [settings, reservations] = await Promise.all([getSiteSettings(), getReservations()]);
   const today = new Date().toISOString().slice(0, 10);
   const getReservationValue = (reservation: Reservation) => settings.formatPricing[reservation.courseFormat] ?? 0;
+  const monthlyReservations = Array.from({ length: 6 }, (_, index) => {
+    const current = new Date();
+    current.setMonth(current.getMonth() - (5 - index), 1);
+    const monthKey = current.toISOString().slice(0, 7);
+    const monthLabel = current.toLocaleDateString("fr-FR", { month: "short", year: "2-digit" });
+    const inMonth = reservations.filter((reservation) => reservation.createdAt.slice(0, 7) === monthKey);
+
+    return {
+      month: monthLabel,
+      count: inMonth.length,
+      confirmed: inMonth.filter((reservation) => reservation.status === "confirmed").length,
+    };
+  });
 
   return {
     totalReservations: reservations.length,
@@ -760,12 +793,15 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       level,
       count: reservations.filter((reservation) => reservation.level === level).length,
     })),
+    monthlyReservations,
   };
 }
 
 async function getSiteSettingsSqlite() {
   const row = getSqliteDb()
-    .prepare("SELECT center_name, center_address, maps_url, format_pricing_json, course_formats_json FROM site_settings WHERE id = 1")
+    .prepare(
+      "SELECT center_name, direct_whatsapp, professor_note, maintenance_mode, format_pricing_json, course_formats_json FROM site_settings WHERE id = 1",
+    )
     .get() as SiteSettingsRow | undefined;
 
   return normalizeSettings(row);
@@ -775,7 +811,7 @@ async function getSiteSettingsSupabase() {
   await ensureSupabaseSeed();
   const { data, error } = await getSupabaseClient()
     .from("site_settings")
-    .select("center_name, center_address, maps_url, format_pricing_json, course_formats_json")
+    .select("center_name, direct_whatsapp, professor_note, maintenance_mode, format_pricing_json, course_formats_json")
     .eq("id", 1)
     .maybeSingle<SiteSettingsRow>();
 
@@ -794,19 +830,21 @@ async function updateSiteSettingsSqlite(settings: SiteSettings) {
   const now = new Date().toISOString();
   getSqliteDb().prepare(
     `
-      INSERT INTO site_settings (id, center_name, center_address, maps_url, course_formats_json, updated_at)
-      VALUES (1, @centerName, @centerAddress, @mapsUrl, @courseFormatsJson, @updatedAt)
+      INSERT INTO site_settings (id, center_name, direct_whatsapp, professor_note, maintenance_mode, course_formats_json, updated_at)
+      VALUES (1, @centerName, @directWhatsapp, @professorNote, @maintenanceMode, @courseFormatsJson, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         center_name = excluded.center_name,
-        center_address = excluded.center_address,
-        maps_url = excluded.maps_url,
+        direct_whatsapp = excluded.direct_whatsapp,
+        professor_note = excluded.professor_note,
+        maintenance_mode = excluded.maintenance_mode,
         course_formats_json = excluded.course_formats_json,
         updated_at = excluded.updated_at
     `,
   ).run({
     centerName: settings.centerName,
-    centerAddress: settings.centerAddress,
-    mapsUrl: settings.mapsUrl,
+    directWhatsapp: settings.directWhatsapp,
+    professorNote: settings.professorNote,
+    maintenanceMode: settings.maintenanceMode ? 1 : 0,
     courseFormatsJson: JSON.stringify(settings.courseFormats),
     updatedAt: now,
   });
@@ -827,8 +865,9 @@ async function updateSiteSettingsSupabase(settings: SiteSettings) {
     {
       id: 1,
       center_name: settings.centerName,
-      center_address: settings.centerAddress,
-      maps_url: settings.mapsUrl,
+      direct_whatsapp: settings.directWhatsapp,
+      professor_note: settings.professorNote,
+      maintenance_mode: settings.maintenanceMode,
       format_pricing_json: JSON.stringify(settings.formatPricing),
       course_formats_json: JSON.stringify(settings.courseFormats),
       updated_at: new Date().toISOString(),
@@ -845,6 +884,53 @@ async function updateSiteSettingsSupabase(settings: SiteSettings) {
 
 export async function updateSiteSettings(settings: SiteSettings) {
   return getProvider() === "supabase" ? updateSiteSettingsSupabase(settings) : updateSiteSettingsSqlite(settings);
+}
+
+async function updateAdminPasswordSqlite(username: string, newPassword: string) {
+  getSqliteDb()
+    .prepare("UPDATE admins SET password_hash = @passwordHash WHERE username = @username")
+    .run({
+      username,
+      passwordHash: hashPassword(newPassword),
+    });
+}
+
+async function updateAdminPasswordSupabase(username: string, newPassword: string) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient()
+    .from("admins")
+    .update({ password_hash: hashPassword(newPassword) })
+    .eq("username", username);
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function updateAdminPassword(username: string, newPassword: string) {
+  return getProvider() === "supabase"
+    ? updateAdminPasswordSupabase(username, newPassword)
+    : updateAdminPasswordSqlite(username, newPassword);
+}
+
+export async function getBackupSnapshot() {
+  const [reservations, settings, stats] = await Promise.all([getReservations(), getSiteSettings(), getDashboardStats()]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    reservations,
+    settings,
+    stats,
+  };
+}
+
+export async function writeAutomaticBackupSnapshot() {
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir, { recursive: true });
+  }
+
+  const snapshot = await getBackupSnapshot();
+  fs.writeFileSync(path.join(backupDir, "beta-latest-backup.json"), JSON.stringify(snapshot, null, 2));
 }
 
 async function getPushSubscriptionsSqlite() {

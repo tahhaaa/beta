@@ -1,11 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, MessageCircleMore } from "lucide-react";
 import { PhysicsScene } from "@/components/physics-scene";
 import { Reveal } from "@/components/reveal";
 import { BRAND_FULL_NAME, BRAND_NAME, BRAND_TAGLINE, FIXED_PROGRAM_LABEL } from "@/lib/constants";
+import { getWhatsappLink } from "@/lib/utils";
 
-export function HeroSection() {
+export function HeroSection({ directWhatsapp }: { directWhatsapp: string }) {
   return (
     <section className="relative overflow-hidden">
       <PhysicsScene />
@@ -36,6 +37,15 @@ export function HeroSection() {
               Réserver votre groupe maintenant
               <ArrowRight className="h-5 w-5" />
             </Link>
+            <a
+              href={getWhatsappLink(directWhatsapp, "Bonjour, je souhaite obtenir des informations sur la preparation 2eme bac.")}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-6 py-4 text-base font-semibold text-emerald-100 transition hover:border-emerald-300/60 hover:bg-emerald-400/15"
+            >
+              <MessageCircleMore className="h-5 w-5" />
+              WhatsApp direct
+            </a>
             <a
               href="#presentation"
               className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-4 text-base font-semibold text-white transition hover:border-cyan-300/60 hover:bg-white/10"

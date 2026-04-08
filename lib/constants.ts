@@ -3,7 +3,7 @@ import type { CourseFormat, FormatPricing, Pricing, SiteSettings, StudentProfile
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 export const BRAND_NAME = "βeta";
 export const BRAND_FULL_NAME = "βeta Physique";
-export const BRAND_TAGLINE = "Le centre scientifique premium pour réussir la 2ème bac";
+export const BRAND_TAGLINE = "Le professeur de physique premium pour réussir la 2ème bac";
 
 export const SCHOOL_LEVELS: StudentProfile[] = ["Bon niveau", "Niveau à renforcer"];
 
@@ -28,8 +28,9 @@ export const COURSE_FORMATS: CourseFormat[] = [
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   centerName: BRAND_FULL_NAME,
-  centerAddress: "Votre adresse du centre ici",
-  mapsUrl: "https://maps.google.com",
+  directWhatsapp: "212622222430",
+  professorNote: "Le professeur se déplace selon l'organisation du groupe et le format choisi.",
+  maintenanceMode: false,
   formatPricing: DEFAULT_FORMAT_PRICING,
   courseFormats: COURSE_FORMATS.map((format) => ({
     id: format,

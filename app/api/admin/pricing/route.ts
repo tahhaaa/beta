@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/api-error";
 import { requireAdminSession } from "@/lib/auth";
-import { getPricing, updatePricing } from "@/lib/db";
+import { getPricing, updatePricing, writeAutomaticBackupSnapshot } from "@/lib/db";
 import { pricingSchema } from "@/lib/validation";
 
 export async function GET() {
@@ -23,7 +23,9 @@ export async function PUT(request: Request) {
   }
 
   try {
-    return NextResponse.json(await updatePricing(parsed.data));
+    const pricing = await updatePricing(parsed.data);
+    await writeAutomaticBackupSnapshot();
+    return NextResponse.json(pricing);
   } catch (error) {
     return NextResponse.json({ message: getErrorMessage(error, "Impossible de mettre à jour les tarifs.") }, { status: 500 });
   }

@@ -81,6 +81,45 @@ body {
   animation: floatPhysics 6s ease-in-out infinite;
 }
 
+@media (max-width: 768px) {
+  html {
+    scroll-padding-top: 1rem;
+  }
+
+  .animate-orbit,
+  .animate-orbitReverse {
+    animation-duration: 16s;
+  }
+
+  .animate-wave {
+    animation-duration: 6s;
+  }
+
+  .animate-floatPhysics {
+    animation-duration: 8s;
+    opacity: 0.2;
+  }
+}
+
+@media (max-width: 640px) {
+  .animate-floatPhysics {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-orbit,
+  .animate-orbitReverse,
+  .animate-wave,
+  .animate-floatPhysics {
+    animation: none !important;
+  }
+}
+
 ::selection {
   background: rgba(34, 211, 238, 0.25);
 }

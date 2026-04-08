@@ -35,6 +35,11 @@ export type DashboardStats = {
     level: StudentProfile;
     count: number;
   }>;
+  monthlyReservations: Array<{
+    month: string;
+    count: number;
+    confirmed: number;
+  }>;
 };
 
 export type AdminSession = {
@@ -44,8 +49,9 @@ export type AdminSession = {
 
 export type SiteSettings = {
   centerName: string;
-  centerAddress: string;
-  mapsUrl: string;
+  directWhatsapp: string;
+  professorNote: string;
+  maintenanceMode: boolean;
   formatPricing: FormatPricing;
   courseFormats: Array<{
     id: CourseFormat;

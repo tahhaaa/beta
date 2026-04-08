@@ -28,8 +28,9 @@ create table if not exists public.pricing (
 create table if not exists public.site_settings (
   id integer primary key,
   center_name text not null,
-  center_address text not null,
-  maps_url text not null,
+  direct_whatsapp text not null default '',
+  professor_note text not null default '',
+  maintenance_mode boolean not null default false,
   format_pricing_json text not null default '{}',
   course_formats_json text not null,
   updated_at timestamptz not null default timezone('utc', now()),
@@ -45,6 +46,10 @@ create table if not exists public.push_subscriptions (
 
 create index if not exists reservations_created_at_idx on public.reservations (created_at desc);
 create index if not exists reservations_status_idx on public.reservations (status);
+
+alter table public.site_settings add column if not exists direct_whatsapp text not null default '';
+alter table public.site_settings add column if not exists professor_note text not null default '';
+alter table public.site_settings add column if not exists maintenance_mode boolean not null default false;
 
 alter table public.admins enable row level security;
 alter table public.reservations enable row level security;

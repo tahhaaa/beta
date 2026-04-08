@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LoaderCircle, Sparkles } from "lucide-react";
+import { CheckCircle2, LoaderCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { SCHOOL_LEVELS } from "@/lib/constants";
 import type { SiteSettings } from "@/lib/types";
+import { getWhatsappLink } from "@/lib/utils";
 
 type ReservationFormProps = {
   courseFormats: SiteSettings["courseFormats"];
+  directWhatsapp: string;
 };
 
 const baseInitialForm = {
@@ -19,7 +21,7 @@ const baseInitialForm = {
   city: "",
 };
 
-export function ReservationForm({ courseFormats }: ReservationFormProps) {
+export function ReservationForm({ courseFormats, directWhatsapp }: ReservationFormProps) {
   const availableFormats = courseFormats.length ? courseFormats : [];
   const [form, setForm] = useState({
     ...baseInitialForm,
@@ -27,6 +29,7 @@ export function ReservationForm({ courseFormats }: ReservationFormProps) {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isPending, startTransition] = useTransition();
+  const [submittedName, setSubmittedName] = useState("");
 
   function setField(name: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -59,11 +62,46 @@ export function ReservationForm({ courseFormats }: ReservationFormProps) {
           courseFormat: availableFormats[0]?.id ?? baseInitialForm.courseFormat,
         });
         setErrors({});
+        setSubmittedName(form.studentName);
         toast.success("Votre réservation a bien été envoyée.");
       } catch {
         toast.error("Connexion impossible. Vérifiez votre réseau puis réessayez.");
       }
     });
+  }
+
+  if (submittedName) {
+    return (
+      <div className="space-y-5 rounded-[2rem] border border-emerald-300/15 bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.05))] p-6 backdrop-blur sm:p-8">
+        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-emerald-400/15 text-emerald-300">
+          <CheckCircle2 className="h-8 w-8" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.28em] text-emerald-200">Demande envoyée</p>
+          <h2 className="mt-3 font-heading text-3xl font-semibold text-white">Réservation bien reçue, {submittedName}.</h2>
+          <p className="mt-4 max-w-xl leading-7 text-slate-200">
+            Le professeur analysera le profil et vous recontactera pour confirmer le groupe, le format de cours et la suite de l’inscription.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setSubmittedName("")}
+            className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-4 font-semibold text-white transition hover:bg-white/10"
+          >
+            Envoyer une autre demande
+          </button>
+          <a
+            href={getWhatsappLink(directWhatsapp, "Bonjour, je viens d'envoyer une reservation et je souhaite confirmer quelques details.")}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center rounded-full bg-cyan-400 px-5 py-4 font-semibold text-brand-950 transition hover:bg-cyan-300"
+          >
+            Continuer sur WhatsApp
+          </a>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -49,3 +49,9 @@ export function getCoursePriceLabel(courseFormat: string, amount: number) {
 
   return `${formatCurrency(amount)}`;
 }
+
+export function getWhatsappLink(phone: string, message?: string) {
+  const normalized = normalizeMoroccanPhone(phone);
+  const text = message ? `&text=${encodeURIComponent(message)}` : "";
+  return `https://api.whatsapp.com/send/?phone=${normalized}${text}&type=phone_number&app_absent=0`;
+}

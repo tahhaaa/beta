@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/api-error";
 import { requireAdminSession } from "@/lib/auth";
-import { deleteReservation, updateReservation } from "@/lib/db";
+import { deleteReservation, updateReservation, writeAutomaticBackupSnapshot } from "@/lib/db";
 import { reservationUpdateSchema } from "@/lib/validation";
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -16,6 +16,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   try {
     const reservation = await updateReservation(Number(id), parsed.data);
+    await writeAutomaticBackupSnapshot();
     return NextResponse.json(reservation);
   } catch (error) {
     return NextResponse.json({ message: getErrorMessage(error, "Mise à jour impossible.") }, { status: 500 });
@@ -27,6 +28,7 @@ export async function DELETE(_: Request, context: { params: Promise<{ id: string
   const { id } = await context.params;
   try {
     await deleteReservation(Number(id));
+    await writeAutomaticBackupSnapshot();
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json({ message: getErrorMessage(error, "Suppression impossible.") }, { status: 500 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/api-error";
-import { createReservation } from "@/lib/db";
+import { createReservation, getSiteSettings, writeAutomaticBackupSnapshot } from "@/lib/db";
 import { sendReservationPushNotification } from "@/lib/push";
 import { reservationSchema } from "@/lib/validation";
 
@@ -21,12 +21,18 @@ export async function POST(request: Request) {
   }
 
   try {
+    const settings = await getSiteSettings();
+    if (settings.maintenanceMode) {
+      return NextResponse.json({ message: "Le site est temporairement en maintenance. Revenez un peu plus tard." }, { status: 503 });
+    }
+
     const reservation = await createReservation(parsed.data);
     if (!reservation) {
       return NextResponse.json({ message: "Impossible d'enregistrer la réservation." }, { status: 500 });
     }
 
     await sendReservationPushNotification(reservation);
+    await writeAutomaticBackupSnapshot();
     return NextResponse.json(
       {
         message: "Réservation enregistrée avec succès.",

@@ -31,8 +31,9 @@ export const reservationUpdateSchema = reservationSchema.extend({
 
 export const siteSettingsSchema = z.object({
   centerName: z.string().min(2, "Nom du centre requis."),
-  centerAddress: z.string().min(2, "Adresse du centre requise."),
-  mapsUrl: z.string().url("Lien Google Maps invalide."),
+  directWhatsapp: z.string().min(8, "Numéro WhatsApp direct requis."),
+  professorNote: z.string().min(8, "Note de fonctionnement requise."),
+  maintenanceMode: z.boolean(),
   formatPricing: z.object({
     "Cours collectif mini groupe": z.coerce.number().min(0),
     "Cours individuel": z.coerce.number().min(0),
@@ -48,3 +49,14 @@ export const siteSettingsSchema = z.object({
     )
     .min(1),
 });
+
+export const adminPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(8, "Mot de passe actuel requis."),
+    newPassword: z.string().min(8, "Le nouveau mot de passe doit contenir au moins 8 caractères."),
+    confirmPassword: z.string().min(8, "Confirmation requise."),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "La confirmation du mot de passe ne correspond pas.",
+    path: ["confirmPassword"],
+  });

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, MapPinned } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { redirect } from "next/navigation";
 import { ReservationForm } from "@/components/reservation-form";
 import { getSiteSettings } from "@/lib/db";
 
@@ -13,6 +14,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ReservationPage() {
   const settings = await getSiteSettings();
+  if (settings.maintenanceMode) {
+    redirect("/maintenance");
+  }
   const enabledFormats = settings.courseFormats.filter((format) => format.enabled);
 
   return (
@@ -49,18 +53,13 @@ export default async function ReservationPage() {
               </ul>
             </div>
 
-            <a
-              href={settings.mapsUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-5 py-3 font-medium text-cyan-100 transition hover:bg-cyan-400/20"
-            >
-              <MapPinned className="h-4 w-4" />
-              Voir la localisation du centre
-            </a>
+            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-7 backdrop-blur">
+              <h2 className="text-xl font-semibold text-white">Organisation avec le professeur</h2>
+              <p className="mt-4 leading-7 text-slate-300">{settings.professorNote}</p>
+            </div>
           </section>
 
-          <ReservationForm courseFormats={enabledFormats} />
+          <ReservationForm courseFormats={enabledFormats} directWhatsapp={settings.directWhatsapp} />
         </div>
       </div>
     </main>

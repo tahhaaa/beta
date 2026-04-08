@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/api-error";
 import { requireAdminSession } from "@/lib/auth";
-import { getSiteSettings, updateSiteSettings } from "@/lib/db";
+import { getSiteSettings, updateSiteSettings, writeAutomaticBackupSnapshot } from "@/lib/db";
 import { siteSettingsSchema } from "@/lib/validation";
 
 export async function GET() {
@@ -23,7 +23,9 @@ export async function PUT(request: Request) {
   }
 
   try {
-    return NextResponse.json(await updateSiteSettings(parsed.data));
+    const settings = await updateSiteSettings(parsed.data);
+    await writeAutomaticBackupSnapshot();
+    return NextResponse.json(settings);
   } catch (error) {
     return NextResponse.json({ message: getErrorMessage(error, "Impossible de mettre à jour les paramètres.") }, { status: 500 });
   }
