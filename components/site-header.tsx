@@ -21,7 +21,7 @@ export function SiteHeader() {
           <a href="#niveaux" className="transition hover:text-cyan-300">
             Niveaux
           </a>
-          <Link href="/espace-eleve" className="transition hover:text-cyan-300">
+          <Link href="/espaceeleve" className="transition hover:text-cyan-300">
             Espace élève
           </Link>
           <Link

@@ -1,36 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { BarChart3, BellRing, CalendarDays, Check, Download, KeyRound, LoaderCircle, LogOut, NotebookPen, Pencil, Search, Settings2, ShieldCheck, Trash2, Wallet } from "lucide-react";
+import { BarChart3, BellRing, Check, Download, KeyRound, LoaderCircle, LogOut, Pencil, Search, Settings2, ShieldCheck, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { SCHOOL_LEVELS } from "@/lib/constants";
-import type { DashboardStats, Reservation, SiteSettings, StudentSession, StudentTask } from "@/lib/types";
+import type { DashboardStats, Reservation, SiteSettings } from "@/lib/types";
 import { formatCurrency, formatDate, getCoursePriceLabel, normalizeMoroccanPhone } from "@/lib/utils";
 
 type AdminDashboardProps = {
   initialReservations: Reservation[];
   initialStats: DashboardStats;
   initialSettings: SiteSettings;
-  initialStudentSessions: StudentSession[];
-  initialStudentTasks: StudentTask[];
 };
 
 type EditableReservation = Omit<Reservation, "id" | "createdAt" | "updatedAt" | "confirmedAt">;
-type StudentSessionForm = {
-  title: string;
-  scheduledAt: string;
-  level: Reservation["level"];
-  courseFormat: Reservation["courseFormat"];
-  instructions: string;
-  status: StudentSession["status"];
-};
-
-type StudentTaskForm = {
-  title: string;
-  dueDate: string;
-  details: string;
-  status: StudentTask["status"];
-};
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -43,14 +27,10 @@ export function AdminDashboard({
   initialReservations,
   initialStats,
   initialSettings,
-  initialStudentSessions,
-  initialStudentTasks,
 }: AdminDashboardProps) {
   const [reservations, setReservations] = useState(initialReservations);
   const [stats, setStats] = useState(initialStats);
   const [settings, setSettings] = useState(initialSettings);
-  const [studentSessions, setStudentSessions] = useState(initialStudentSessions);
-  const [studentTasks, setStudentTasks] = useState(initialStudentTasks);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<EditableReservation | null>(null);
   const [search, setSearch] = useState("");
@@ -68,22 +48,6 @@ export function AdminDashboard({
     confirmPassword: "",
   });
   const [isSavingPassword, setIsSavingPassword] = useState(false);
-  const [sessionForm, setSessionForm] = useState<StudentSessionForm>({
-    title: "",
-    scheduledAt: "",
-    level: SCHOOL_LEVELS[0],
-    courseFormat: "Cours collectif mini groupe",
-    instructions: "",
-    status: "scheduled",
-  });
-  const [taskForm, setTaskForm] = useState<StudentTaskForm>({
-    title: "",
-    dueDate: "",
-    details: "",
-    status: "todo",
-  });
-  const [isSavingSession, setIsSavingSession] = useState(false);
-  const [isSavingTask, setIsSavingTask] = useState(false);
   const didMountSettings = useRef(false);
   const lastSavedSettingsRef = useRef(JSON.stringify(initialSettings));
 
@@ -106,29 +70,23 @@ export function AdminDashboard({
 
   async function refreshDashboard() {
     try {
-      const [statsResponse, reservationsResponse, settingsResponse, sessionsResponse, tasksResponse] = await Promise.all([
+      const [statsResponse, reservationsResponse, settingsResponse] = await Promise.all([
         fetch("/api/admin/stats", { cache: "no-store" }),
         fetch("/api/admin/reservations", { cache: "no-store" }),
         fetch("/api/admin/settings", { cache: "no-store" }),
-        fetch("/api/admin/student-sessions", { cache: "no-store" }),
-        fetch("/api/admin/student-tasks", { cache: "no-store" }),
       ]);
 
-      if (!statsResponse.ok || !reservationsResponse.ok || !settingsResponse.ok || !sessionsResponse.ok || !tasksResponse.ok) {
+      if (!statsResponse.ok || !reservationsResponse.ok || !settingsResponse.ok) {
         throw new Error("refresh");
       }
 
       const nextStats = (await statsResponse.json()) as DashboardStats;
       const nextReservations = (await reservationsResponse.json()) as Reservation[];
       const nextSettings = (await settingsResponse.json()) as SiteSettings;
-      const nextSessions = (await sessionsResponse.json()) as StudentSession[];
-      const nextTasks = (await tasksResponse.json()) as StudentTask[];
       lastSavedSettingsRef.current = JSON.stringify(nextSettings);
       setStats(nextStats);
       setReservations(nextReservations);
       setSettings(nextSettings);
-      setStudentSessions(nextSessions);
-      setStudentTasks(nextTasks);
     } catch {
       toast.error("Actualisation impossible pour le moment.");
     }
@@ -217,13 +175,16 @@ export function AdminDashboard({
   async function handleConfirm(reservation: Reservation) {
     try {
       const response = await fetch(`/api/admin/reservations/${reservation.id}/confirm`, { method: "POST" });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      const payload = (await response.json().catch(() => ({}))) as { message?: string; whatsappLink?: string };
       if (!response.ok) {
         toast.error(payload.message ?? "Confirmation impossible.");
         return;
       }
 
       toast.success("Réservation confirmée.");
+      if (payload.whatsappLink) {
+        window.open(payload.whatsappLink, "_blank", "noopener,noreferrer");
+      }
       await refreshDashboard();
     } catch {
       toast.error("Confirmation impossible.");
@@ -461,146 +422,6 @@ export function AdminDashboard({
     window.open(`/api/admin/export?format=${format}`, "_blank", "noopener,noreferrer");
   }
 
-  async function handleCreateSession(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingSession(true);
-
-    try {
-      const response = await fetch("/api/admin/student-sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...sessionForm,
-          scheduledAt: new Date(sessionForm.scheduledAt).toISOString(),
-        }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        toast.error(payload.message ?? "Impossible de créer la séance.");
-        return;
-      }
-
-      setSessionForm({
-        title: "",
-        scheduledAt: "",
-        level: SCHOOL_LEVELS[0],
-        courseFormat: enabledFormats[0]?.id ?? "Cours collectif mini groupe",
-        instructions: "",
-        status: "scheduled",
-      });
-      toast.success("Séance publiée dans l’espace élève.");
-      await refreshDashboard();
-    } catch {
-      toast.error("Impossible de créer la séance.");
-    } finally {
-      setIsSavingSession(false);
-    }
-  }
-
-  async function handleCreateTask(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSavingTask(true);
-
-    try {
-      const response = await fetch("/api/admin/student-tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...taskForm,
-          dueDate: new Date(taskForm.dueDate).toISOString(),
-        }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        toast.error(payload.message ?? "Impossible de créer la tâche.");
-        return;
-      }
-
-      setTaskForm({
-        title: "",
-        dueDate: "",
-        details: "",
-        status: "todo",
-      });
-      toast.success("Tâche ajoutée dans l’espace élève.");
-      await refreshDashboard();
-    } catch {
-      toast.error("Impossible de créer la tâche.");
-    } finally {
-      setIsSavingTask(false);
-    }
-  }
-
-  async function handleSessionStatusChange(id: number, status: StudentSession["status"]) {
-    try {
-      const response = await fetch(`/api/admin/student-sessions/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        toast.error(payload.message ?? "Impossible de mettre à jour la séance.");
-        return;
-      }
-
-      await refreshDashboard();
-    } catch {
-      toast.error("Impossible de mettre à jour la séance.");
-    }
-  }
-
-  async function handleTaskStatusChange(id: number, status: StudentTask["status"]) {
-    try {
-      const response = await fetch(`/api/admin/student-tasks/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        toast.error(payload.message ?? "Impossible de mettre à jour la tâche.");
-        return;
-      }
-
-      await refreshDashboard();
-    } catch {
-      toast.error("Impossible de mettre à jour la tâche.");
-    }
-  }
-
-  async function handleDeleteSession(id: number) {
-    try {
-      const response = await fetch(`/api/admin/student-sessions/${id}`, { method: "DELETE" });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        toast.error(payload.message ?? "Impossible de supprimer la séance.");
-        return;
-      }
-
-      toast.success("Séance supprimée.");
-      await refreshDashboard();
-    } catch {
-      toast.error("Impossible de supprimer la séance.");
-    }
-  }
-
-  async function handleDeleteTask(id: number) {
-    try {
-      const response = await fetch(`/api/admin/student-tasks/${id}`, { method: "DELETE" });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
-      if (!response.ok) {
-        toast.error(payload.message ?? "Impossible de supprimer la tâche.");
-        return;
-      }
-
-      toast.success("Tâche supprimée.");
-      await refreshDashboard();
-    } catch {
-      toast.error("Impossible de supprimer la tâche.");
-    }
-  }
-
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -612,6 +433,13 @@ export function AdminDashboard({
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row lg:flex-wrap lg:justify-end">
+          <Link
+            href="/adminespaceeleve"
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-400/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20 sm:px-5"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Admin espace élève
+          </Link>
           <button
             onClick={handlePushToggle}
             className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10 sm:px-5"
@@ -670,12 +498,6 @@ export function AdminDashboard({
               className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
             >
             Rapports
-            </a>
-            <a
-              href="#espace-eleve"
-              className="whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10"
-            >
-            Espace élève
             </a>
             <a
               href="#reservations"
@@ -986,164 +808,6 @@ export function AdminDashboard({
         </div>
       </section>
 
-      <section id="espace-eleve" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
-        <div className="flex flex-col gap-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-cyan-300">Espace élève</p>
-          <h2 className="font-heading text-2xl font-semibold text-white">Publier le planning et les tâches</h2>
-          <p className="max-w-3xl text-sm leading-6 text-slate-300">
-            Ajoutez les prochaines séances, la date, l’heure et ce que les élèves doivent faire. Tout s’affiche ensuite dans la page publique espace élève.
-          </p>
-        </div>
-
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
-          <div className="rounded-[1.8rem] border border-white/10 bg-brand-950/45 p-5 sm:p-6">
-            <div className="flex items-center gap-3">
-              <CalendarDays className="h-6 w-6 text-cyan-300" />
-              <div>
-                <h3 className="font-heading text-xl font-semibold text-white">Nouvelle séance</h3>
-                <p className="text-sm text-slate-300">Date, heure, groupe et consignes.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateSession} className="mt-5 space-y-4">
-              <Field label="Titre de la séance" value={sessionForm.title} onChange={(value) => setSessionForm((current) => ({ ...current, title: value }))} />
-              <label className="block">
-                <span className="mb-2 block text-sm text-slate-200">Date et heure</span>
-                <input
-                  type="datetime-local"
-                  value={sessionForm.scheduledAt}
-                  onChange={(event) => setSessionForm((current) => ({ ...current, scheduledAt: event.target.value }))}
-                  className="w-full rounded-2xl border border-white/10 bg-brand-950/60 px-4 py-3 text-white outline-none"
-                />
-              </label>
-              <Select
-                label="Groupe"
-                value={sessionForm.level}
-                items={SCHOOL_LEVELS.map((level) => ({ value: level, label: level }))}
-                onChange={(value) => setSessionForm((current) => ({ ...current, level: value as Reservation["level"] }))}
-              />
-              <Select
-                label="Type de cours"
-                value={sessionForm.courseFormat}
-                items={enabledFormats.map((format) => ({ value: format.id, label: format.label }))}
-                onChange={(value) => setSessionForm((current) => ({ ...current, courseFormat: value as Reservation["courseFormat"] }))}
-              />
-              <TextareaField
-                label="Consignes"
-                value={sessionForm.instructions}
-                onChange={(value) => setSessionForm((current) => ({ ...current, instructions: value }))}
-              />
-              <button
-                type="submit"
-                disabled={isSavingSession}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-cyan-400 px-5 py-3 font-semibold text-brand-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isSavingSession ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Publier la séance
-              </button>
-            </form>
-          </div>
-
-          <div className="rounded-[1.8rem] border border-white/10 bg-brand-950/45 p-5 sm:p-6">
-            <div className="flex items-center gap-3">
-              <NotebookPen className="h-6 w-6 text-cyan-300" />
-              <div>
-                <h3 className="font-heading text-xl font-semibold text-white">Nouvelle tâche</h3>
-                <p className="text-sm text-slate-300">Exercices, leçons et ce qu’il faut préparer.</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleCreateTask} className="mt-5 space-y-4">
-              <Field label="Titre" value={taskForm.title} onChange={(value) => setTaskForm((current) => ({ ...current, title: value }))} />
-              <label className="block">
-                <span className="mb-2 block text-sm text-slate-200">Date limite</span>
-                <input
-                  type="datetime-local"
-                  value={taskForm.dueDate}
-                  onChange={(event) => setTaskForm((current) => ({ ...current, dueDate: event.target.value }))}
-                  className="w-full rounded-2xl border border-white/10 bg-brand-950/60 px-4 py-3 text-white outline-none"
-                />
-              </label>
-              <TextareaField
-                label="Détails à faire"
-                value={taskForm.details}
-                onChange={(value) => setTaskForm((current) => ({ ...current, details: value }))}
-              />
-              <button
-                type="submit"
-                disabled={isSavingTask}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-cyan-400 px-5 py-3 font-semibold text-brand-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {isSavingTask ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-                Publier la tâche
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
-          <div className="rounded-[1.8rem] border border-white/10 bg-brand-950/45 p-5 sm:p-6">
-            <h3 className="font-heading text-xl font-semibold text-white">Séances publiées</h3>
-            <div className="mt-5 space-y-4">
-              {studentSessions.length ? (
-                studentSessions.map((session) => (
-                  <div key={session.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="font-semibold text-white">{session.title}</p>
-                        <p className="mt-1 text-sm text-slate-400">{formatDate(session.scheduledAt)}</p>
-                        <p className="mt-1 text-sm text-slate-300">{session.level} • {session.courseFormat}</p>
-                      </div>
-                      {studentSessionStatusBadge(session.status)}
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-300">{session.instructions}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => handleSessionStatusChange(session.id, "scheduled")} className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-2 text-xs text-cyan-100 transition hover:bg-cyan-400/20">Prévue</button>
-                      <button type="button" onClick={() => handleSessionStatusChange(session.id, "done")} className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100 transition hover:bg-emerald-400/20">Terminée</button>
-                      <button type="button" onClick={() => handleSessionStatusChange(session.id, "cancelled")} className="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100 transition hover:bg-amber-400/20">Reportée</button>
-                      <button type="button" onClick={() => handleDeleteSession(session.id)} className="rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-400/20">Supprimer</button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center text-slate-400">
-                  Aucune séance publiée pour l’instant.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-[1.8rem] border border-white/10 bg-brand-950/45 p-5 sm:p-6">
-            <h3 className="font-heading text-xl font-semibold text-white">Tâches publiées</h3>
-            <div className="mt-5 space-y-4">
-              {studentTasks.length ? (
-                studentTasks.map((task) => (
-                  <div key={task.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="font-semibold text-white">{task.title}</p>
-                        <p className="mt-1 text-sm text-slate-400">À faire avant: {formatDate(task.dueDate)}</p>
-                      </div>
-                      {studentTaskStatusBadge(task.status)}
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-300">{task.details}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => handleTaskStatusChange(task.id, "todo")} className="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-100 transition hover:bg-amber-400/20">À faire</button>
-                      <button type="button" onClick={() => handleTaskStatusChange(task.id, "done")} className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100 transition hover:bg-emerald-400/20">Fait</button>
-                      <button type="button" onClick={() => handleDeleteTask(task.id)} className="rounded-full border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-xs text-rose-100 transition hover:bg-rose-400/20">Supprimer</button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 px-5 py-10 text-center text-slate-400">
-                  Aucune tâche publiée pour l’instant.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section id="reservations" className="scroll-mt-24 rounded-[2rem] border border-white/10 bg-white/5 p-4 backdrop-blur sm:p-6 lg:p-7">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
@@ -1429,34 +1093,6 @@ function statusBadge(status: Reservation["status"]) {
       }`}
     >
       {status === "confirmed" ? "Confirmée" : "En attente"}
-    </span>
-  );
-}
-
-function studentSessionStatusBadge(status: StudentSession["status"]) {
-  return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-        status === "done"
-          ? "bg-emerald-400/15 text-emerald-300"
-          : status === "cancelled"
-            ? "bg-rose-400/15 text-rose-200"
-            : "bg-cyan-400/15 text-cyan-200"
-      }`}
-    >
-      {status === "done" ? "Terminée" : status === "cancelled" ? "Reportée" : "Prévue"}
-    </span>
-  );
-}
-
-function studentTaskStatusBadge(status: StudentTask["status"]) {
-  return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-        status === "done" ? "bg-emerald-400/15 text-emerald-300" : "bg-amber-400/15 text-amber-200"
-      }`}
-    >
-      {status === "done" ? "Fait" : "À faire"}
     </span>
   );
 }

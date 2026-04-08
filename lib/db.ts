@@ -10,13 +10,14 @@ import type {
   Reservation,
   ReservationStatus,
   SiteSettings,
+  StudentPortalSession,
+  StudentPortalSessionStatus,
+  StudentPortalTask,
+  StudentPortalTaskStatus,
   StudentProfile,
-  StudentSession,
-  StudentSessionStatus,
-  StudentTask,
-  StudentTaskStatus,
+  StudentSpace,
 } from "@/lib/types";
-import { normalizeMoroccanPhone } from "@/lib/utils";
+import { countWeeklyOccurrencesUntil, generateStudentAccessCode, normalizeMoroccanPhone } from "@/lib/utils";
 
 type Provider = "sqlite" | "supabase";
 
@@ -53,24 +54,37 @@ type SiteSettingsRow = {
   course_formats_json: string;
 };
 
-type StudentSessionRow = {
+type StudentSpaceRow = {
   id: number | string;
-  title: string;
-  scheduled_at: string;
-  level: StudentProfile;
-  course_format: Reservation["courseFormat"];
-  instructions: string;
-  status: StudentSessionStatus;
+  reservation_id: number | string;
+  access_code: string;
+  portal_active: number | boolean;
+  individual_sessions_per_week: number;
+  course_ends_at: string;
   created_at: string;
   updated_at: string;
 };
 
-type StudentTaskRow = {
+type StudentPortalSessionRow = {
   id: number | string;
+  student_space_id: number | string;
   title: string;
-  due_date: string;
+  scheduled_at: string;
+  instructions: string;
+  file_url: string | null;
+  status: StudentPortalSessionStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+type StudentPortalTaskRow = {
+  id: number | string;
+  student_space_id: number | string;
+  title: string;
+  due_at: string;
   details: string;
-  status: StudentTaskStatus;
+  file_url: string | null;
+  status: StudentPortalTaskStatus;
   created_at: string;
   updated_at: string;
 };
@@ -173,26 +187,41 @@ function mapReservation(row: ReservationRow): Reservation {
   };
 }
 
-function mapStudentSession(row: StudentSessionRow): StudentSession {
+function mapStudentSpace(row: StudentSpaceRow): StudentSpace {
   return {
     id: Number(row.id),
+    reservationId: Number(row.reservation_id),
+    accessCode: row.access_code,
+    portalActive: Boolean(row.portal_active),
+    individualSessionsPerWeek: row.individual_sessions_per_week === 2 ? 2 : 1,
+    courseEndsAt: row.course_ends_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapStudentPortalSession(row: StudentPortalSessionRow): StudentPortalSession {
+  return {
+    id: Number(row.id),
+    studentSpaceId: Number(row.student_space_id),
     title: row.title,
     scheduledAt: row.scheduled_at,
-    level: row.level,
-    courseFormat: row.course_format,
     instructions: row.instructions,
+    fileUrl: row.file_url ?? "",
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-function mapStudentTask(row: StudentTaskRow): StudentTask {
+function mapStudentPortalTask(row: StudentPortalTaskRow): StudentPortalTask {
   return {
     id: Number(row.id),
+    studentSpaceId: Number(row.student_space_id),
     title: row.title,
-    dueDate: row.due_date,
+    dueAt: row.due_at,
     details: row.details,
+    fileUrl: row.file_url ?? "",
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -283,23 +312,36 @@ function initSqliteDb(database: Database.Database) {
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS student_sessions (
+    CREATE TABLE IF NOT EXISTS student_spaces (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id INTEGER NOT NULL UNIQUE,
+      access_code TEXT NOT NULL UNIQUE,
+      portal_active INTEGER NOT NULL DEFAULT 1,
+      individual_sessions_per_week INTEGER NOT NULL DEFAULT 1,
+      course_ends_at TEXT NOT NULL DEFAULT '2026-07-11T23:59:59.000Z',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS student_portal_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_space_id INTEGER NOT NULL,
       title TEXT NOT NULL,
       scheduled_at TEXT NOT NULL,
-      level TEXT NOT NULL,
-      course_format TEXT NOT NULL,
       instructions TEXT NOT NULL,
+      file_url TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'scheduled',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS student_tasks (
+    CREATE TABLE IF NOT EXISTS student_portal_tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      student_space_id INTEGER NOT NULL,
       title TEXT NOT NULL,
-      due_date TEXT NOT NULL,
+      due_at TEXT NOT NULL,
       details TEXT NOT NULL,
+      file_url TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'todo',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -467,14 +509,11 @@ async function ensureSupabaseSeed() {
       throw formatSupabaseError(pushSubscriptionsResult.error);
     }
 
-    const studentSessionsResult = await supabase.from("student_sessions").select("id").limit(1);
-    if (studentSessionsResult.error && studentSessionsResult.error.message.includes("does not exist")) {
-      throw formatSupabaseError(studentSessionsResult.error);
-    }
-
-    const studentTasksResult = await supabase.from("student_tasks").select("id").limit(1);
-    if (studentTasksResult.error && studentTasksResult.error.message.includes("does not exist")) {
-      throw formatSupabaseError(studentTasksResult.error);
+    for (const table of ["student_spaces", "student_portal_sessions", "student_portal_tasks"] as const) {
+      const result = await supabase.from(table).select("id").limit(1);
+      if (result.error && result.error.message.includes("does not exist")) {
+        throw formatSupabaseError(result.error);
+      }
     }
   })().catch((error) => {
     supabaseSeedPromise = null;
@@ -845,9 +884,26 @@ export async function updatePricing(pricing: Pricing) {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const [settings, reservations] = await Promise.all([getSiteSettings(), getReservations()]);
+  const [settings, reservations, studentSpaces] = await Promise.all([getSiteSettings(), getReservations(), getStudentSpaces()]);
   const today = new Date().toISOString().slice(0, 10);
-  const getReservationValue = (reservation: Reservation) => settings.formatPricing[reservation.courseFormat] ?? 0;
+  const getReservationValue = (reservation: Reservation) => {
+    const basePrice = settings.formatPricing[reservation.courseFormat] ?? 0;
+
+    if (reservation.courseFormat !== "Cours individuel") {
+      return basePrice;
+    }
+
+    const portal = studentSpaces.find((item) => item.reservationId === reservation.id);
+    const sessionsPerWeek = portal?.individualSessionsPerWeek ?? 1;
+    const fromDate = reservation.confirmedAt ?? reservation.createdAt;
+    const totalSessions = countWeeklyOccurrencesUntil({
+      fromDate,
+      untilDate: portal?.courseEndsAt ?? "2026-07-11T23:59:59.000Z",
+      weeklyOccurrences: sessionsPerWeek,
+    });
+
+    return totalSessions * basePrice;
+  };
   const monthlyReservations = Array.from({ length: 6 }, (_, index) => {
     const current = new Date();
     current.setMonth(current.getMonth() - (5 - index), 1);
@@ -1005,12 +1061,11 @@ export async function updateAdminPassword(username: string, newPassword: string)
 }
 
 export async function getBackupSnapshot() {
-  const [reservations, settings, stats, studentSessions, studentTasks] = await Promise.all([
+  const [reservations, settings, stats, studentSpaces] = await Promise.all([
     getReservations(),
     getSiteSettings(),
     getDashboardStats(),
-    getStudentSessions(),
-    getStudentTasks(),
+    getStudentSpaces(),
   ]);
 
   return {
@@ -1018,8 +1073,7 @@ export async function getBackupSnapshot() {
     reservations,
     settings,
     stats,
-    studentSessions,
-    studentTasks,
+    studentSpaces,
   };
 }
 
@@ -1129,226 +1183,392 @@ export async function deletePushSubscriptionByEndpoint(endpoint: string) {
     : deletePushSubscriptionByEndpointSqlite(endpoint);
 }
 
-async function getStudentSessionsSqlite() {
+async function getStudentSpacesSqlite() {
   const rows = getSqliteDb()
-    .prepare("SELECT * FROM student_sessions ORDER BY scheduled_at ASC, id ASC")
-    .all() as StudentSessionRow[];
-  return rows.map(mapStudentSession);
+    .prepare("SELECT * FROM student_spaces ORDER BY id DESC")
+    .all() as StudentSpaceRow[];
+  return rows.map(mapStudentSpace);
 }
 
-async function getStudentSessionsSupabase() {
+async function getStudentSpacesSupabase() {
+  await ensureSupabaseSeed();
+  const { data, error } = await getSupabaseClient().from("student_spaces").select("*").order("id", { ascending: false }).returns<StudentSpaceRow[]>();
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return (data ?? []).map(mapStudentSpace);
+}
+
+export async function getStudentSpaces() {
+  return getProvider() === "supabase" ? getStudentSpacesSupabase() : getStudentSpacesSqlite();
+}
+
+async function getStudentSpaceByReservationIdSqlite(reservationId: number) {
+  const row = getSqliteDb().prepare("SELECT * FROM student_spaces WHERE reservation_id = ?").get(reservationId) as StudentSpaceRow | undefined;
+  return row ? mapStudentSpace(row) : null;
+}
+
+async function getStudentSpaceByReservationIdSupabase(reservationId: number) {
   await ensureSupabaseSeed();
   const { data, error } = await getSupabaseClient()
-    .from("student_sessions")
+    .from("student_spaces")
     .select("*")
-    .order("scheduled_at", { ascending: true })
-    .order("id", { ascending: true })
-    .returns<StudentSessionRow[]>();
+    .eq("reservation_id", reservationId)
+    .maybeSingle<StudentSpaceRow>();
 
   if (error) {
     throw formatSupabaseError(error);
   }
 
-  return (data ?? []).map(mapStudentSession);
+  return data ? mapStudentSpace(data) : null;
 }
 
-export async function getStudentSessions() {
-  return getProvider() === "supabase" ? getStudentSessionsSupabase() : getStudentSessionsSqlite();
+export async function getStudentSpaceByReservationId(reservationId: number) {
+  return getProvider() === "supabase"
+    ? getStudentSpaceByReservationIdSupabase(reservationId)
+    : getStudentSpaceByReservationIdSqlite(reservationId);
 }
 
-async function createStudentSessionSqlite(input: Omit<StudentSession, "id" | "createdAt" | "updatedAt">) {
+async function getStudentSpaceByCodeSqlite(accessCode: string) {
+  const row = getSqliteDb().prepare("SELECT * FROM student_spaces WHERE access_code = ?").get(accessCode) as StudentSpaceRow | undefined;
+  return row ? mapStudentSpace(row) : null;
+}
+
+async function getStudentSpaceByCodeSupabase(accessCode: string) {
+  await ensureSupabaseSeed();
+  const { data, error } = await getSupabaseClient()
+    .from("student_spaces")
+    .select("*")
+    .eq("access_code", accessCode)
+    .maybeSingle<StudentSpaceRow>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return data ? mapStudentSpace(data) : null;
+}
+
+export async function getStudentSpaceByCode(accessCode: string) {
+  return getProvider() === "supabase" ? getStudentSpaceByCodeSupabase(accessCode) : getStudentSpaceByCodeSqlite(accessCode);
+}
+
+async function createStudentSpaceSqlite(reservation: Reservation) {
   const now = new Date().toISOString();
   const result = getSqliteDb()
     .prepare(
-      `INSERT INTO student_sessions (title, scheduled_at, level, course_format, instructions, status, created_at, updated_at)
-       VALUES (@title, @scheduledAt, @level, @courseFormat, @instructions, @status, @createdAt, @updatedAt)`,
+      `INSERT INTO student_spaces (reservation_id, access_code, portal_active, individual_sessions_per_week, course_ends_at, created_at, updated_at)
+       VALUES (@reservationId, @accessCode, 1, 1, @courseEndsAt, @createdAt, @updatedAt)`,
     )
     .run({
+      reservationId: reservation.id,
+      accessCode: generateStudentAccessCode(reservation.studentName, reservation.id),
+      courseEndsAt: "2026-07-11T23:59:59.000Z",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  const row = getSqliteDb().prepare("SELECT * FROM student_spaces WHERE id = ?").get(Number(result.lastInsertRowid)) as StudentSpaceRow | undefined;
+  return row ? mapStudentSpace(row) : null;
+}
+
+async function createStudentSpaceSupabase(reservation: Reservation) {
+  await ensureSupabaseSeed();
+  const now = new Date().toISOString();
+  const { data, error } = await getSupabaseClient()
+    .from("student_spaces")
+    .insert({
+      reservation_id: reservation.id,
+      access_code: generateStudentAccessCode(reservation.studentName, reservation.id),
+      portal_active: true,
+      individual_sessions_per_week: 1,
+      course_ends_at: "2026-07-11T23:59:59.000Z",
+      created_at: now,
+      updated_at: now,
+    })
+    .select("*")
+    .single<StudentSpaceRow>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return mapStudentSpace(data);
+}
+
+export async function ensureStudentSpaceForReservation(reservation: Reservation) {
+  const existing = await getStudentSpaceByReservationId(reservation.id);
+  if (existing) {
+    return existing;
+  }
+
+  return getProvider() === "supabase" ? createStudentSpaceSupabase(reservation) : createStudentSpaceSqlite(reservation);
+}
+
+async function updateStudentSpaceSqlite(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek">) {
+  getSqliteDb()
+    .prepare(
+      `UPDATE student_spaces
+       SET portal_active = @portalActive,
+           individual_sessions_per_week = @individualSessionsPerWeek,
+           updated_at = @updatedAt
+       WHERE id = @id`,
+    )
+    .run({
+      id,
+      portalActive: input.portalActive ? 1 : 0,
+      individualSessionsPerWeek: input.individualSessionsPerWeek,
+      updatedAt: new Date().toISOString(),
+    });
+}
+
+async function updateStudentSpaceSupabase(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek">) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient()
+    .from("student_spaces")
+    .update({
+      portal_active: input.portalActive,
+      individual_sessions_per_week: input.individualSessionsPerWeek,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function updateStudentSpace(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek">) {
+  return getProvider() === "supabase" ? updateStudentSpaceSupabase(id, input) : updateStudentSpaceSqlite(id, input);
+}
+
+async function getStudentPortalSessionsSqlite(studentSpaceId: number) {
+  const rows = getSqliteDb()
+    .prepare("SELECT * FROM student_portal_sessions WHERE student_space_id = ? ORDER BY scheduled_at ASC, id ASC")
+    .all(studentSpaceId) as StudentPortalSessionRow[];
+  return rows.map(mapStudentPortalSession);
+}
+
+async function getStudentPortalSessionsSupabase(studentSpaceId: number) {
+  await ensureSupabaseSeed();
+  const { data, error } = await getSupabaseClient()
+    .from("student_portal_sessions")
+    .select("*")
+    .eq("student_space_id", studentSpaceId)
+    .order("scheduled_at", { ascending: true })
+    .returns<StudentPortalSessionRow[]>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return (data ?? []).map(mapStudentPortalSession);
+}
+
+export async function getStudentPortalSessions(studentSpaceId: number) {
+  return getProvider() === "supabase" ? getStudentPortalSessionsSupabase(studentSpaceId) : getStudentPortalSessionsSqlite(studentSpaceId);
+}
+
+async function createStudentPortalSessionSqlite(studentSpaceId: number, input: Omit<StudentPortalSession, "id" | "studentSpaceId" | "createdAt" | "updatedAt">) {
+  const now = new Date().toISOString();
+  const result = getSqliteDb()
+    .prepare(
+      `INSERT INTO student_portal_sessions (student_space_id, title, scheduled_at, instructions, file_url, status, created_at, updated_at)
+       VALUES (@studentSpaceId, @title, @scheduledAt, @instructions, @fileUrl, @status, @createdAt, @updatedAt)`,
+    )
+    .run({
+      studentSpaceId,
       ...input,
       createdAt: now,
       updatedAt: now,
     });
 
-  const row = getSqliteDb().prepare("SELECT * FROM student_sessions WHERE id = ?").get(Number(result.lastInsertRowid)) as
-    | StudentSessionRow
-    | undefined;
-  return row ? mapStudentSession(row) : null;
+  const row = getSqliteDb().prepare("SELECT * FROM student_portal_sessions WHERE id = ?").get(Number(result.lastInsertRowid)) as StudentPortalSessionRow | undefined;
+  return row ? mapStudentPortalSession(row) : null;
 }
 
-async function createStudentSessionSupabase(input: Omit<StudentSession, "id" | "createdAt" | "updatedAt">) {
+async function createStudentPortalSessionSupabase(studentSpaceId: number, input: Omit<StudentPortalSession, "id" | "studentSpaceId" | "createdAt" | "updatedAt">) {
   await ensureSupabaseSeed();
   const now = new Date().toISOString();
   const { data, error } = await getSupabaseClient()
-    .from("student_sessions")
+    .from("student_portal_sessions")
     .insert({
+      student_space_id: studentSpaceId,
       title: input.title,
       scheduled_at: input.scheduledAt,
-      level: input.level,
-      course_format: input.courseFormat,
       instructions: input.instructions,
+      file_url: input.fileUrl,
       status: input.status,
       created_at: now,
       updated_at: now,
     })
     .select("*")
-    .single<StudentSessionRow>();
+    .single<StudentPortalSessionRow>();
 
   if (error) {
     throw formatSupabaseError(error);
   }
 
-  return mapStudentSession(data);
+  return mapStudentPortalSession(data);
 }
 
-export async function createStudentSession(input: Omit<StudentSession, "id" | "createdAt" | "updatedAt">) {
-  return getProvider() === "supabase" ? createStudentSessionSupabase(input) : createStudentSessionSqlite(input);
+export async function createStudentPortalSession(studentSpaceId: number, input: Omit<StudentPortalSession, "id" | "studentSpaceId" | "createdAt" | "updatedAt">) {
+  return getProvider() === "supabase"
+    ? createStudentPortalSessionSupabase(studentSpaceId, input)
+    : createStudentPortalSessionSqlite(studentSpaceId, input);
 }
 
-async function updateStudentSessionStatusSqlite(id: number, status: StudentSessionStatus) {
+async function updateStudentPortalSessionStatusSqlite(id: number, status: StudentPortalSessionStatus) {
   getSqliteDb()
-    .prepare("UPDATE student_sessions SET status = @status, updated_at = @updatedAt WHERE id = @id")
+    .prepare("UPDATE student_portal_sessions SET status = @status, updated_at = @updatedAt WHERE id = @id")
     .run({ id, status, updatedAt: new Date().toISOString() });
 }
 
-async function updateStudentSessionStatusSupabase(id: number, status: StudentSessionStatus) {
+async function updateStudentPortalSessionStatusSupabase(id: number, status: StudentPortalSessionStatus) {
   await ensureSupabaseSeed();
   const { error } = await getSupabaseClient()
-    .from("student_sessions")
+    .from("student_portal_sessions")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id);
-
   if (error) {
     throw formatSupabaseError(error);
   }
 }
 
-export async function updateStudentSessionStatus(id: number, status: StudentSessionStatus) {
+export async function updateStudentPortalSessionStatus(id: number, status: StudentPortalSessionStatus) {
   return getProvider() === "supabase"
-    ? updateStudentSessionStatusSupabase(id, status)
-    : updateStudentSessionStatusSqlite(id, status);
+    ? updateStudentPortalSessionStatusSupabase(id, status)
+    : updateStudentPortalSessionStatusSqlite(id, status);
 }
 
-async function deleteStudentSessionSqlite(id: number) {
-  getSqliteDb().prepare("DELETE FROM student_sessions WHERE id = ?").run(id);
+async function deleteStudentPortalSessionSqlite(id: number) {
+  getSqliteDb().prepare("DELETE FROM student_portal_sessions WHERE id = ?").run(id);
 }
 
-async function deleteStudentSessionSupabase(id: number) {
+async function deleteStudentPortalSessionSupabase(id: number) {
   await ensureSupabaseSeed();
-  const { error } = await getSupabaseClient().from("student_sessions").delete().eq("id", id);
+  const { error } = await getSupabaseClient().from("student_portal_sessions").delete().eq("id", id);
   if (error) {
     throw formatSupabaseError(error);
   }
 }
 
-export async function deleteStudentSession(id: number) {
-  return getProvider() === "supabase" ? deleteStudentSessionSupabase(id) : deleteStudentSessionSqlite(id);
+export async function deleteStudentPortalSession(id: number) {
+  return getProvider() === "supabase" ? deleteStudentPortalSessionSupabase(id) : deleteStudentPortalSessionSqlite(id);
 }
 
-async function getStudentTasksSqlite() {
-  const rows = getSqliteDb().prepare("SELECT * FROM student_tasks ORDER BY due_date ASC, id ASC").all() as StudentTaskRow[];
-  return rows.map(mapStudentTask);
+async function getStudentPortalTasksSqlite(studentSpaceId: number) {
+  const rows = getSqliteDb()
+    .prepare("SELECT * FROM student_portal_tasks WHERE student_space_id = ? ORDER BY due_at ASC, id ASC")
+    .all(studentSpaceId) as StudentPortalTaskRow[];
+  return rows.map(mapStudentPortalTask);
 }
 
-async function getStudentTasksSupabase() {
+async function getStudentPortalTasksSupabase(studentSpaceId: number) {
   await ensureSupabaseSeed();
   const { data, error } = await getSupabaseClient()
-    .from("student_tasks")
+    .from("student_portal_tasks")
     .select("*")
-    .order("due_date", { ascending: true })
-    .order("id", { ascending: true })
-    .returns<StudentTaskRow[]>();
+    .eq("student_space_id", studentSpaceId)
+    .order("due_at", { ascending: true })
+    .returns<StudentPortalTaskRow[]>();
 
   if (error) {
     throw formatSupabaseError(error);
   }
 
-  return (data ?? []).map(mapStudentTask);
+  return (data ?? []).map(mapStudentPortalTask);
 }
 
-export async function getStudentTasks() {
-  return getProvider() === "supabase" ? getStudentTasksSupabase() : getStudentTasksSqlite();
+export async function getStudentPortalTasks(studentSpaceId: number) {
+  return getProvider() === "supabase" ? getStudentPortalTasksSupabase(studentSpaceId) : getStudentPortalTasksSqlite(studentSpaceId);
 }
 
-async function createStudentTaskSqlite(input: Omit<StudentTask, "id" | "createdAt" | "updatedAt">) {
+async function createStudentPortalTaskSqlite(studentSpaceId: number, input: Omit<StudentPortalTask, "id" | "studentSpaceId" | "createdAt" | "updatedAt">) {
   const now = new Date().toISOString();
   const result = getSqliteDb()
     .prepare(
-      `INSERT INTO student_tasks (title, due_date, details, status, created_at, updated_at)
-       VALUES (@title, @dueDate, @details, @status, @createdAt, @updatedAt)`,
+      `INSERT INTO student_portal_tasks (student_space_id, title, due_at, details, file_url, status, created_at, updated_at)
+       VALUES (@studentSpaceId, @title, @dueAt, @details, @fileUrl, @status, @createdAt, @updatedAt)`,
     )
     .run({
+      studentSpaceId,
       ...input,
       createdAt: now,
       updatedAt: now,
     });
 
-  const row = getSqliteDb().prepare("SELECT * FROM student_tasks WHERE id = ?").get(Number(result.lastInsertRowid)) as
-    | StudentTaskRow
-    | undefined;
-  return row ? mapStudentTask(row) : null;
+  const row = getSqliteDb().prepare("SELECT * FROM student_portal_tasks WHERE id = ?").get(Number(result.lastInsertRowid)) as StudentPortalTaskRow | undefined;
+  return row ? mapStudentPortalTask(row) : null;
 }
 
-async function createStudentTaskSupabase(input: Omit<StudentTask, "id" | "createdAt" | "updatedAt">) {
+async function createStudentPortalTaskSupabase(studentSpaceId: number, input: Omit<StudentPortalTask, "id" | "studentSpaceId" | "createdAt" | "updatedAt">) {
   await ensureSupabaseSeed();
   const now = new Date().toISOString();
   const { data, error } = await getSupabaseClient()
-    .from("student_tasks")
+    .from("student_portal_tasks")
     .insert({
+      student_space_id: studentSpaceId,
       title: input.title,
-      due_date: input.dueDate,
+      due_at: input.dueAt,
       details: input.details,
+      file_url: input.fileUrl,
       status: input.status,
       created_at: now,
       updated_at: now,
     })
     .select("*")
-    .single<StudentTaskRow>();
+    .single<StudentPortalTaskRow>();
 
   if (error) {
     throw formatSupabaseError(error);
   }
 
-  return mapStudentTask(data);
+  return mapStudentPortalTask(data);
 }
 
-export async function createStudentTask(input: Omit<StudentTask, "id" | "createdAt" | "updatedAt">) {
-  return getProvider() === "supabase" ? createStudentTaskSupabase(input) : createStudentTaskSqlite(input);
+export async function createStudentPortalTask(studentSpaceId: number, input: Omit<StudentPortalTask, "id" | "studentSpaceId" | "createdAt" | "updatedAt">) {
+  return getProvider() === "supabase"
+    ? createStudentPortalTaskSupabase(studentSpaceId, input)
+    : createStudentPortalTaskSqlite(studentSpaceId, input);
 }
 
-async function updateStudentTaskStatusSqlite(id: number, status: StudentTaskStatus) {
+async function updateStudentPortalTaskStatusSqlite(id: number, status: StudentPortalTaskStatus) {
   getSqliteDb()
-    .prepare("UPDATE student_tasks SET status = @status, updated_at = @updatedAt WHERE id = @id")
+    .prepare("UPDATE student_portal_tasks SET status = @status, updated_at = @updatedAt WHERE id = @id")
     .run({ id, status, updatedAt: new Date().toISOString() });
 }
 
-async function updateStudentTaskStatusSupabase(id: number, status: StudentTaskStatus) {
+async function updateStudentPortalTaskStatusSupabase(id: number, status: StudentPortalTaskStatus) {
   await ensureSupabaseSeed();
   const { error } = await getSupabaseClient()
-    .from("student_tasks")
+    .from("student_portal_tasks")
     .update({ status, updated_at: new Date().toISOString() })
     .eq("id", id);
-
   if (error) {
     throw formatSupabaseError(error);
   }
 }
 
-export async function updateStudentTaskStatus(id: number, status: StudentTaskStatus) {
-  return getProvider() === "supabase" ? updateStudentTaskStatusSupabase(id, status) : updateStudentTaskStatusSqlite(id, status);
+export async function updateStudentPortalTaskStatus(id: number, status: StudentPortalTaskStatus) {
+  return getProvider() === "supabase"
+    ? updateStudentPortalTaskStatusSupabase(id, status)
+    : updateStudentPortalTaskStatusSqlite(id, status);
 }
 
-async function deleteStudentTaskSqlite(id: number) {
-  getSqliteDb().prepare("DELETE FROM student_tasks WHERE id = ?").run(id);
+async function deleteStudentPortalTaskSqlite(id: number) {
+  getSqliteDb().prepare("DELETE FROM student_portal_tasks WHERE id = ?").run(id);
 }
 
-async function deleteStudentTaskSupabase(id: number) {
+async function deleteStudentPortalTaskSupabase(id: number) {
   await ensureSupabaseSeed();
-  const { error } = await getSupabaseClient().from("student_tasks").delete().eq("id", id);
+  const { error } = await getSupabaseClient().from("student_portal_tasks").delete().eq("id", id);
   if (error) {
     throw formatSupabaseError(error);
   }
 }
 
-export async function deleteStudentTask(id: number) {
-  return getProvider() === "supabase" ? deleteStudentTaskSupabase(id) : deleteStudentTaskSqlite(id);
+export async function deleteStudentPortalTask(id: number) {
+  return getProvider() === "supabase" ? deleteStudentPortalTaskSupabase(id) : deleteStudentPortalTaskSqlite(id);
 }

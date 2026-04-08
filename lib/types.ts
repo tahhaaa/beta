@@ -2,8 +2,8 @@ export type StudentProfile = "Bon niveau" | "Niveau à renforcer";
 export type CourseFormat = "Cours collectif mini groupe" | "Cours individuel" | "Cours en ligne 100%";
 
 export type ReservationStatus = "pending" | "confirmed";
-export type StudentSessionStatus = "scheduled" | "done" | "cancelled";
-export type StudentTaskStatus = "todo" | "done";
+export type StudentPortalSessionStatus = "scheduled" | "done" | "cancelled";
+export type StudentPortalTaskStatus = "todo" | "done";
 
 export type Reservation = {
   id: number;
@@ -17,6 +17,41 @@ export type Reservation = {
   createdAt: string;
   updatedAt: string;
   confirmedAt: string | null;
+};
+
+export type StudentSpace = {
+  id: number;
+  reservationId: number;
+  accessCode: string;
+  portalActive: boolean;
+  individualSessionsPerWeek: 1 | 2;
+  courseEndsAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StudentPortalSession = {
+  id: number;
+  studentSpaceId: number;
+  title: string;
+  scheduledAt: string;
+  instructions: string;
+  fileUrl: string;
+  status: StudentPortalSessionStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StudentPortalTask = {
+  id: number;
+  studentSpaceId: number;
+  title: string;
+  dueAt: string;
+  details: string;
+  fileUrl: string;
+  status: StudentPortalTaskStatus;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Pricing = Record<StudentProfile, number>;
@@ -42,28 +77,6 @@ export type DashboardStats = {
     count: number;
     confirmed: number;
   }>;
-};
-
-export type StudentSession = {
-  id: number;
-  title: string;
-  scheduledAt: string;
-  level: StudentProfile;
-  courseFormat: CourseFormat;
-  instructions: string;
-  status: StudentSessionStatus;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type StudentTask = {
-  id: number;
-  title: string;
-  dueDate: string;
-  details: string;
-  status: StudentTaskStatus;
-  createdAt: string;
-  updatedAt: string;
 };
 
 export type AdminSession = {
