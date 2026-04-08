@@ -66,6 +66,7 @@ export const adminPasswordSchema = z
 export const studentSpaceUpdateSchema = z.object({
   portalActive: z.boolean(),
   individualSessionsPerWeek: z.union([z.literal(1), z.literal(2)]),
+  targetSessionCount: z.coerce.number().int().min(1).max(200),
 });
 
 export const studentPortalSessionSchema = z.object({

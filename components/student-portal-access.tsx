@@ -141,10 +141,10 @@ export function StudentPortalAccess() {
       return { tasksPercent: 0, sessionsPercent: 0, globalPercent: 0 };
     }
 
-    const activeSessionsCount = portal.sessions.filter((session) => session.status !== "cancelled").length;
     const doneSessionsCount = portal.sessions.filter((session) => session.status === "done").length;
     const tasksPercent = portal.tasks.length ? Math.round((completedTasks.length / portal.tasks.length) * 100) : 0;
-    const sessionsPercent = activeSessionsCount ? Math.round((doneSessionsCount / activeSessionsCount) * 100) : 0;
+    const targetSessions = Math.max(portal.studentSpace.targetSessionCount, 1);
+    const sessionsPercent = Math.min(100, Math.round((doneSessionsCount / targetSessions) * 100));
     const globalPercent = Math.round((tasksPercent + sessionsPercent) / 2);
 
     return {
@@ -397,7 +397,7 @@ export function StudentPortalAccess() {
                 icon={<Target className="h-5 w-5 text-cyan-300" />}
                 title="Progression globale"
                 value={`${progress.globalPercent}%`}
-                description={`${completedTasks.length} tache(s) faites • ${historySessions.filter((session) => session.status === "done").length} seance(s) terminees.`}
+                description={`${completedTasks.length} tache(s) faites • ${historySessions.filter((session) => session.status === "done").length}/${portal.studentSpace.targetSessionCount} seance(s) terminees.`}
               />
               <InfoCard
                 icon={<NotebookPen className="h-5 w-5 text-cyan-300" />}
@@ -460,7 +460,7 @@ export function StudentPortalAccess() {
                     <ProgressCard
                       label="Progression des seances"
                       value={progress.sessionsPercent}
-                      description={`${historySessions.filter((session) => session.status === "done").length}/${portal.sessions.filter((session) => session.status !== "cancelled").length || 0} terminees`}
+                      description={`${historySessions.filter((session) => session.status === "done").length}/${portal.studentSpace.targetSessionCount} seances objectif`}
                     />
                   </div>
                 </div>

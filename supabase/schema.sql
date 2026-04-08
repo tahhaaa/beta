@@ -50,6 +50,7 @@ create table if not exists public.student_spaces (
   access_code text not null unique,
   portal_active boolean not null default true,
   individual_sessions_per_week integer not null default 1,
+  target_session_count integer not null default 1,
   course_ends_at timestamptz not null default '2026-07-11T23:59:59.000Z',
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
@@ -87,6 +88,7 @@ alter table public.site_settings add column if not exists maps_url text default 
 alter table public.site_settings add column if not exists direct_whatsapp text not null default '';
 alter table public.site_settings add column if not exists professor_note text not null default '';
 alter table public.site_settings add column if not exists maintenance_mode boolean not null default false;
+alter table public.student_spaces add column if not exists target_session_count integer not null default 1;
 alter table public.site_settings alter column center_address set default '';
 alter table public.site_settings alter column maps_url set default '';
 update public.site_settings

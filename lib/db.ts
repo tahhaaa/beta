@@ -60,6 +60,7 @@ type StudentSpaceRow = {
   access_code: string;
   portal_active: number | boolean;
   individual_sessions_per_week: number;
+  target_session_count: number;
   course_ends_at: string;
   created_at: string;
   updated_at: string;
@@ -194,10 +195,31 @@ function mapStudentSpace(row: StudentSpaceRow): StudentSpace {
     accessCode: row.access_code,
     portalActive: Boolean(row.portal_active),
     individualSessionsPerWeek: row.individual_sessions_per_week === 2 ? 2 : 1,
+    targetSessionCount: Number(row.target_session_count ?? 1),
     courseEndsAt: row.course_ends_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function getRecommendedTargetSessionCount({
+  reservation,
+  individualSessionsPerWeek,
+  courseEndsAt,
+}: {
+  reservation: Reservation;
+  individualSessionsPerWeek: 1 | 2;
+  courseEndsAt: string;
+}) {
+  const weeklyOccurrences = reservation.courseFormat === "Cours individuel" ? individualSessionsPerWeek : 1;
+  return Math.max(
+    1,
+    countWeeklyOccurrencesUntil({
+      fromDate: reservation.confirmedAt ?? reservation.createdAt,
+      untilDate: courseEndsAt,
+      weeklyOccurrences,
+    }),
+  );
 }
 
 function mapStudentPortalSession(row: StudentPortalSessionRow): StudentPortalSession {
@@ -318,6 +340,7 @@ function initSqliteDb(database: Database.Database) {
       access_code TEXT NOT NULL UNIQUE,
       portal_active INTEGER NOT NULL DEFAULT 1,
       individual_sessions_per_week INTEGER NOT NULL DEFAULT 1,
+      target_session_count INTEGER NOT NULL DEFAULT 1,
       course_ends_at TEXT NOT NULL DEFAULT '2026-07-11T23:59:59.000Z',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -365,6 +388,11 @@ function initSqliteDb(database: Database.Database) {
   }
   if (!settingsColumns.some((column) => column.name === "maintenance_mode")) {
     database.exec("ALTER TABLE site_settings ADD COLUMN maintenance_mode INTEGER NOT NULL DEFAULT 0");
+  }
+
+  const studentSpaceColumns = database.prepare("PRAGMA table_info(student_spaces)").all() as Array<{ name: string }>;
+  if (!studentSpaceColumns.some((column) => column.name === "target_session_count")) {
+    database.exec("ALTER TABLE student_spaces ADD COLUMN target_session_count INTEGER NOT NULL DEFAULT 1");
   }
 
   const seed = getDefaultAdminSeed();
@@ -1256,15 +1284,22 @@ export async function getStudentSpaceByCode(accessCode: string) {
 
 async function createStudentSpaceSqlite(reservation: Reservation) {
   const now = new Date().toISOString();
+  const courseEndsAt = "2026-07-11T23:59:59.000Z";
+  const targetSessionCount = getRecommendedTargetSessionCount({
+    reservation,
+    individualSessionsPerWeek: 1,
+    courseEndsAt,
+  });
   const result = getSqliteDb()
     .prepare(
-      `INSERT INTO student_spaces (reservation_id, access_code, portal_active, individual_sessions_per_week, course_ends_at, created_at, updated_at)
-       VALUES (@reservationId, @accessCode, 1, 1, @courseEndsAt, @createdAt, @updatedAt)`,
+      `INSERT INTO student_spaces (reservation_id, access_code, portal_active, individual_sessions_per_week, target_session_count, course_ends_at, created_at, updated_at)
+       VALUES (@reservationId, @accessCode, 1, 1, @targetSessionCount, @courseEndsAt, @createdAt, @updatedAt)`,
     )
     .run({
       reservationId: reservation.id,
       accessCode: generateStudentAccessCode(reservation.studentName, reservation.id),
-      courseEndsAt: "2026-07-11T23:59:59.000Z",
+      targetSessionCount,
+      courseEndsAt,
       createdAt: now,
       updatedAt: now,
     });
@@ -1276,6 +1311,12 @@ async function createStudentSpaceSqlite(reservation: Reservation) {
 async function createStudentSpaceSupabase(reservation: Reservation) {
   await ensureSupabaseSeed();
   const now = new Date().toISOString();
+  const courseEndsAt = "2026-07-11T23:59:59.000Z";
+  const targetSessionCount = getRecommendedTargetSessionCount({
+    reservation,
+    individualSessionsPerWeek: 1,
+    courseEndsAt,
+  });
   const { data, error } = await getSupabaseClient()
     .from("student_spaces")
     .insert({
@@ -1283,7 +1324,8 @@ async function createStudentSpaceSupabase(reservation: Reservation) {
       access_code: generateStudentAccessCode(reservation.studentName, reservation.id),
       portal_active: true,
       individual_sessions_per_week: 1,
-      course_ends_at: "2026-07-11T23:59:59.000Z",
+      target_session_count: targetSessionCount,
+      course_ends_at: courseEndsAt,
       created_at: now,
       updated_at: now,
     })
@@ -1306,12 +1348,13 @@ export async function ensureStudentSpaceForReservation(reservation: Reservation)
   return getProvider() === "supabase" ? createStudentSpaceSupabase(reservation) : createStudentSpaceSqlite(reservation);
 }
 
-async function updateStudentSpaceSqlite(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek">) {
+async function updateStudentSpaceSqlite(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek" | "targetSessionCount">) {
   getSqliteDb()
     .prepare(
       `UPDATE student_spaces
        SET portal_active = @portalActive,
            individual_sessions_per_week = @individualSessionsPerWeek,
+           target_session_count = @targetSessionCount,
            updated_at = @updatedAt
        WHERE id = @id`,
     )
@@ -1319,17 +1362,19 @@ async function updateStudentSpaceSqlite(id: number, input: Pick<StudentSpace, "p
       id,
       portalActive: input.portalActive ? 1 : 0,
       individualSessionsPerWeek: input.individualSessionsPerWeek,
+      targetSessionCount: input.targetSessionCount,
       updatedAt: new Date().toISOString(),
     });
 }
 
-async function updateStudentSpaceSupabase(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek">) {
+async function updateStudentSpaceSupabase(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek" | "targetSessionCount">) {
   await ensureSupabaseSeed();
   const { error } = await getSupabaseClient()
     .from("student_spaces")
     .update({
       portal_active: input.portalActive,
       individual_sessions_per_week: input.individualSessionsPerWeek,
+      target_session_count: input.targetSessionCount,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
@@ -1339,7 +1384,7 @@ async function updateStudentSpaceSupabase(id: number, input: Pick<StudentSpace, 
   }
 }
 
-export async function updateStudentSpace(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek">) {
+export async function updateStudentSpace(id: number, input: Pick<StudentSpace, "portalActive" | "individualSessionsPerWeek" | "targetSessionCount">) {
   return getProvider() === "supabase" ? updateStudentSpaceSupabase(id, input) : updateStudentSpaceSqlite(id, input);
 }
 

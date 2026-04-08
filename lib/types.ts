@@ -25,6 +25,7 @@ export type StudentSpace = {
   accessCode: string;
   portalActive: boolean;
   individualSessionsPerWeek: 1 | 2;
+  targetSessionCount: number;
   courseEndsAt: string;
   createdAt: string;
   updatedAt: string;
