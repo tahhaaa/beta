@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { AdminDashboard } from "@/components/admin-dashboard";
-import { getDashboardStats, getReservations, getSiteSettings } from "@/lib/db";
+import { getDashboardStats, getReservations, getSiteSettings, getStudentSessions, getStudentTasks } from "@/lib/db";
 import { requireAdminSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -14,10 +14,12 @@ export const metadata: Metadata = {
 
 export default async function AdminPage() {
   await requireAdminSession();
-  const [initialReservations, initialStats, initialSettings] = await Promise.all([
+  const [initialReservations, initialStats, initialSettings, initialStudentSessions, initialStudentTasks] = await Promise.all([
     getReservations(),
     getDashboardStats(),
     getSiteSettings(),
+    getStudentSessions(),
+    getStudentTasks(),
   ]);
 
   return (
@@ -27,6 +29,8 @@ export default async function AdminPage() {
           initialReservations={initialReservations}
           initialStats={initialStats}
           initialSettings={initialSettings}
+          initialStudentSessions={initialStudentSessions}
+          initialStudentTasks={initialStudentTasks}
         />
       </div>
     </main>

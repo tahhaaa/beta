@@ -21,6 +21,9 @@ export function SiteHeader() {
           <a href="#niveaux" className="transition hover:text-cyan-300">
             Niveaux
           </a>
+          <Link href="/espace-eleve" className="transition hover:text-cyan-300">
+            Espace élève
+          </Link>
           <Link
             href="/reservation"
             className="rounded-full bg-cyan-400 px-5 py-3 font-semibold text-brand-950 transition hover:scale-[1.02] hover:bg-cyan-300"

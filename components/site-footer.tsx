@@ -25,6 +25,9 @@ export function SiteFooter({ directWhatsapp }: { directWhatsapp: string }) {
           <Link href="/reservation" className="transition hover:text-cyan-300">
             Réservation
           </Link>
+          <Link href="/espace-eleve" className="transition hover:text-cyan-300">
+            Espace élève
+          </Link>
           <Link href="/admin" className="transition hover:text-cyan-300">
             Admin
           </Link>

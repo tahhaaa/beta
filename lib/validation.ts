@@ -2,6 +2,8 @@ import { z } from "zod";
 
 const schoolLevelSchema = z.enum(["Bon niveau", "Niveau à renforcer"]);
 const courseFormatSchema = z.enum(["Cours collectif mini groupe", "Cours individuel", "Cours en ligne 100%"]);
+const studentSessionStatusSchema = z.enum(["scheduled", "done", "cancelled"]);
+const studentTaskStatusSchema = z.enum(["todo", "done"]);
 
 export const reservationSchema = z.object({
   studentName: z.string().min(2, "Le nom doit contenir au moins 2 caractères."),
@@ -60,3 +62,19 @@ export const adminPasswordSchema = z
     message: "La confirmation du mot de passe ne correspond pas.",
     path: ["confirmPassword"],
   });
+
+export const studentSessionSchema = z.object({
+  title: z.string().min(3, "Le titre de la séance est requis."),
+  scheduledAt: z.string().min(10, "La date et l'heure sont requises."),
+  level: schoolLevelSchema,
+  courseFormat: courseFormatSchema,
+  instructions: z.string().min(6, "Les consignes sont requises."),
+  status: studentSessionStatusSchema.default("scheduled"),
+});
+
+export const studentTaskSchema = z.object({
+  title: z.string().min(3, "Le titre de la tâche est requis."),
+  dueDate: z.string().min(10, "La date limite est requise."),
+  details: z.string().min(6, "Le détail de la tâche est requis."),
+  status: studentTaskStatusSchema.default("todo"),
+});

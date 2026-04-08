@@ -4,7 +4,18 @@ import fs from "fs";
 import path from "path";
 import { COURSE_FORMATS, DEFAULT_PRICING, DEFAULT_SITE_SETTINGS, SCHOOL_LEVELS } from "@/lib/constants";
 import { getDefaultAdminSeed, hashPassword } from "@/lib/auth";
-import type { DashboardStats, Pricing, Reservation, ReservationStatus, SiteSettings, StudentProfile } from "@/lib/types";
+import type {
+  DashboardStats,
+  Pricing,
+  Reservation,
+  ReservationStatus,
+  SiteSettings,
+  StudentProfile,
+  StudentSession,
+  StudentSessionStatus,
+  StudentTask,
+  StudentTaskStatus,
+} from "@/lib/types";
 import { normalizeMoroccanPhone } from "@/lib/utils";
 
 type Provider = "sqlite" | "supabase";
@@ -40,6 +51,28 @@ type SiteSettingsRow = {
   maintenance_mode: number | boolean | null;
   format_pricing_json: string | null;
   course_formats_json: string;
+};
+
+type StudentSessionRow = {
+  id: number | string;
+  title: string;
+  scheduled_at: string;
+  level: StudentProfile;
+  course_format: Reservation["courseFormat"];
+  instructions: string;
+  status: StudentSessionStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+type StudentTaskRow = {
+  id: number | string;
+  title: string;
+  due_date: string;
+  details: string;
+  status: StudentTaskStatus;
+  created_at: string;
+  updated_at: string;
 };
 
 type StoredPushSubscription = {
@@ -140,6 +173,32 @@ function mapReservation(row: ReservationRow): Reservation {
   };
 }
 
+function mapStudentSession(row: StudentSessionRow): StudentSession {
+  return {
+    id: Number(row.id),
+    title: row.title,
+    scheduledAt: row.scheduled_at,
+    level: row.level,
+    courseFormat: row.course_format,
+    instructions: row.instructions,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapStudentTask(row: StudentTaskRow): StudentTask {
+  return {
+    id: Number(row.id),
+    title: row.title,
+    dueDate: row.due_date,
+    details: row.details,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function normalizeSettings(row?: SiteSettingsRow | null): SiteSettings {
   if (!row) {
     return DEFAULT_SITE_SETTINGS;
@@ -220,6 +279,28 @@ function initSqliteDb(database: Database.Database) {
     CREATE TABLE IF NOT EXISTS push_subscriptions (
       endpoint TEXT PRIMARY KEY,
       subscription_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS student_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      scheduled_at TEXT NOT NULL,
+      level TEXT NOT NULL,
+      course_format TEXT NOT NULL,
+      instructions TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS student_tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      due_date TEXT NOT NULL,
+      details TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'todo',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -384,6 +465,16 @@ async function ensureSupabaseSeed() {
     const pushSubscriptionsResult = await supabase.from("push_subscriptions").select("endpoint").limit(1);
     if (pushSubscriptionsResult.error && pushSubscriptionsResult.error.message.includes("does not exist")) {
       throw formatSupabaseError(pushSubscriptionsResult.error);
+    }
+
+    const studentSessionsResult = await supabase.from("student_sessions").select("id").limit(1);
+    if (studentSessionsResult.error && studentSessionsResult.error.message.includes("does not exist")) {
+      throw formatSupabaseError(studentSessionsResult.error);
+    }
+
+    const studentTasksResult = await supabase.from("student_tasks").select("id").limit(1);
+    if (studentTasksResult.error && studentTasksResult.error.message.includes("does not exist")) {
+      throw formatSupabaseError(studentTasksResult.error);
     }
   })().catch((error) => {
     supabaseSeedPromise = null;
@@ -914,13 +1005,21 @@ export async function updateAdminPassword(username: string, newPassword: string)
 }
 
 export async function getBackupSnapshot() {
-  const [reservations, settings, stats] = await Promise.all([getReservations(), getSiteSettings(), getDashboardStats()]);
+  const [reservations, settings, stats, studentSessions, studentTasks] = await Promise.all([
+    getReservations(),
+    getSiteSettings(),
+    getDashboardStats(),
+    getStudentSessions(),
+    getStudentTasks(),
+  ]);
 
   return {
     generatedAt: new Date().toISOString(),
     reservations,
     settings,
     stats,
+    studentSessions,
+    studentTasks,
   };
 }
 
@@ -1028,4 +1127,228 @@ export async function deletePushSubscriptionByEndpoint(endpoint: string) {
   return getProvider() === "supabase"
     ? deletePushSubscriptionByEndpointSupabase(endpoint)
     : deletePushSubscriptionByEndpointSqlite(endpoint);
+}
+
+async function getStudentSessionsSqlite() {
+  const rows = getSqliteDb()
+    .prepare("SELECT * FROM student_sessions ORDER BY scheduled_at ASC, id ASC")
+    .all() as StudentSessionRow[];
+  return rows.map(mapStudentSession);
+}
+
+async function getStudentSessionsSupabase() {
+  await ensureSupabaseSeed();
+  const { data, error } = await getSupabaseClient()
+    .from("student_sessions")
+    .select("*")
+    .order("scheduled_at", { ascending: true })
+    .order("id", { ascending: true })
+    .returns<StudentSessionRow[]>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return (data ?? []).map(mapStudentSession);
+}
+
+export async function getStudentSessions() {
+  return getProvider() === "supabase" ? getStudentSessionsSupabase() : getStudentSessionsSqlite();
+}
+
+async function createStudentSessionSqlite(input: Omit<StudentSession, "id" | "createdAt" | "updatedAt">) {
+  const now = new Date().toISOString();
+  const result = getSqliteDb()
+    .prepare(
+      `INSERT INTO student_sessions (title, scheduled_at, level, course_format, instructions, status, created_at, updated_at)
+       VALUES (@title, @scheduledAt, @level, @courseFormat, @instructions, @status, @createdAt, @updatedAt)`,
+    )
+    .run({
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  const row = getSqliteDb().prepare("SELECT * FROM student_sessions WHERE id = ?").get(Number(result.lastInsertRowid)) as
+    | StudentSessionRow
+    | undefined;
+  return row ? mapStudentSession(row) : null;
+}
+
+async function createStudentSessionSupabase(input: Omit<StudentSession, "id" | "createdAt" | "updatedAt">) {
+  await ensureSupabaseSeed();
+  const now = new Date().toISOString();
+  const { data, error } = await getSupabaseClient()
+    .from("student_sessions")
+    .insert({
+      title: input.title,
+      scheduled_at: input.scheduledAt,
+      level: input.level,
+      course_format: input.courseFormat,
+      instructions: input.instructions,
+      status: input.status,
+      created_at: now,
+      updated_at: now,
+    })
+    .select("*")
+    .single<StudentSessionRow>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return mapStudentSession(data);
+}
+
+export async function createStudentSession(input: Omit<StudentSession, "id" | "createdAt" | "updatedAt">) {
+  return getProvider() === "supabase" ? createStudentSessionSupabase(input) : createStudentSessionSqlite(input);
+}
+
+async function updateStudentSessionStatusSqlite(id: number, status: StudentSessionStatus) {
+  getSqliteDb()
+    .prepare("UPDATE student_sessions SET status = @status, updated_at = @updatedAt WHERE id = @id")
+    .run({ id, status, updatedAt: new Date().toISOString() });
+}
+
+async function updateStudentSessionStatusSupabase(id: number, status: StudentSessionStatus) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient()
+    .from("student_sessions")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function updateStudentSessionStatus(id: number, status: StudentSessionStatus) {
+  return getProvider() === "supabase"
+    ? updateStudentSessionStatusSupabase(id, status)
+    : updateStudentSessionStatusSqlite(id, status);
+}
+
+async function deleteStudentSessionSqlite(id: number) {
+  getSqliteDb().prepare("DELETE FROM student_sessions WHERE id = ?").run(id);
+}
+
+async function deleteStudentSessionSupabase(id: number) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient().from("student_sessions").delete().eq("id", id);
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function deleteStudentSession(id: number) {
+  return getProvider() === "supabase" ? deleteStudentSessionSupabase(id) : deleteStudentSessionSqlite(id);
+}
+
+async function getStudentTasksSqlite() {
+  const rows = getSqliteDb().prepare("SELECT * FROM student_tasks ORDER BY due_date ASC, id ASC").all() as StudentTaskRow[];
+  return rows.map(mapStudentTask);
+}
+
+async function getStudentTasksSupabase() {
+  await ensureSupabaseSeed();
+  const { data, error } = await getSupabaseClient()
+    .from("student_tasks")
+    .select("*")
+    .order("due_date", { ascending: true })
+    .order("id", { ascending: true })
+    .returns<StudentTaskRow[]>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return (data ?? []).map(mapStudentTask);
+}
+
+export async function getStudentTasks() {
+  return getProvider() === "supabase" ? getStudentTasksSupabase() : getStudentTasksSqlite();
+}
+
+async function createStudentTaskSqlite(input: Omit<StudentTask, "id" | "createdAt" | "updatedAt">) {
+  const now = new Date().toISOString();
+  const result = getSqliteDb()
+    .prepare(
+      `INSERT INTO student_tasks (title, due_date, details, status, created_at, updated_at)
+       VALUES (@title, @dueDate, @details, @status, @createdAt, @updatedAt)`,
+    )
+    .run({
+      ...input,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  const row = getSqliteDb().prepare("SELECT * FROM student_tasks WHERE id = ?").get(Number(result.lastInsertRowid)) as
+    | StudentTaskRow
+    | undefined;
+  return row ? mapStudentTask(row) : null;
+}
+
+async function createStudentTaskSupabase(input: Omit<StudentTask, "id" | "createdAt" | "updatedAt">) {
+  await ensureSupabaseSeed();
+  const now = new Date().toISOString();
+  const { data, error } = await getSupabaseClient()
+    .from("student_tasks")
+    .insert({
+      title: input.title,
+      due_date: input.dueDate,
+      details: input.details,
+      status: input.status,
+      created_at: now,
+      updated_at: now,
+    })
+    .select("*")
+    .single<StudentTaskRow>();
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+
+  return mapStudentTask(data);
+}
+
+export async function createStudentTask(input: Omit<StudentTask, "id" | "createdAt" | "updatedAt">) {
+  return getProvider() === "supabase" ? createStudentTaskSupabase(input) : createStudentTaskSqlite(input);
+}
+
+async function updateStudentTaskStatusSqlite(id: number, status: StudentTaskStatus) {
+  getSqliteDb()
+    .prepare("UPDATE student_tasks SET status = @status, updated_at = @updatedAt WHERE id = @id")
+    .run({ id, status, updatedAt: new Date().toISOString() });
+}
+
+async function updateStudentTaskStatusSupabase(id: number, status: StudentTaskStatus) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient()
+    .from("student_tasks")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function updateStudentTaskStatus(id: number, status: StudentTaskStatus) {
+  return getProvider() === "supabase" ? updateStudentTaskStatusSupabase(id, status) : updateStudentTaskStatusSqlite(id, status);
+}
+
+async function deleteStudentTaskSqlite(id: number) {
+  getSqliteDb().prepare("DELETE FROM student_tasks WHERE id = ?").run(id);
+}
+
+async function deleteStudentTaskSupabase(id: number) {
+  await ensureSupabaseSeed();
+  const { error } = await getSupabaseClient().from("student_tasks").delete().eq("id", id);
+  if (error) {
+    throw formatSupabaseError(error);
+  }
+}
+
+export async function deleteStudentTask(id: number) {
+  return getProvider() === "supabase" ? deleteStudentTaskSupabase(id) : deleteStudentTaskSqlite(id);
 }
