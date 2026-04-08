@@ -58,7 +58,7 @@ type PushSubscriptionRow = {
 
 const dataDir = path.join(process.cwd(), "data");
 const dbPath = path.join(dataDir, "physique.db");
-const backupDir = path.join(dataDir, "backups");
+const backupDir = process.env.VERCEL ? path.join("/tmp", "beta-backups") : path.join(dataDir, "backups");
 const requestedProvider = process.env.DATABASE_PROVIDER;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? "";
 const supabaseServiceKey =
@@ -925,12 +925,18 @@ export async function getBackupSnapshot() {
 }
 
 export async function writeAutomaticBackupSnapshot() {
-  if (!fs.existsSync(backupDir)) {
-    fs.mkdirSync(backupDir, { recursive: true });
-  }
+  try {
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
 
-  const snapshot = await getBackupSnapshot();
-  fs.writeFileSync(path.join(backupDir, "beta-latest-backup.json"), JSON.stringify(snapshot, null, 2));
+    const snapshot = await getBackupSnapshot();
+    fs.writeFileSync(path.join(backupDir, "beta-latest-backup.json"), JSON.stringify(snapshot, null, 2));
+  } catch (error) {
+    if (!process.env.VERCEL) {
+      throw error;
+    }
+  }
 }
 
 async function getPushSubscriptionsSqlite() {
